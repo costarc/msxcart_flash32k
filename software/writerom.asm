@@ -30,11 +30,53 @@
 ;|===========================================================================|
 ;
 ; File history :
-; 1.0    : initial version
+; 1.0  - 27/06/2020 : initial version
+; Compile with z80asm: 
+;  z80asm writerom.asm writerom.asm -o writerom.com
+
 TEXTTERMINATOR: EQU     0
 BDOS:           EQU     5
 dma:			EQU		$80
 regsize:		equ		128
+CALLSTAT:       EQU     $55A8
+INLINBUF:       EQU     $F55E
+INLIN:          EQU     $00B1
+CHPUT:          EQU     $00A2
+CHGET:          EQU     $009F
+INITXT:         EQU     $006C
+EXPTBL:         EQU     $FCC1
+RDSLT:          EQU     $000C
+WRSLT:          EQU     $0014
+CALSLT:         EQU     $001C
+ENASLT:         EQU     $0024
+RSLREG:         EQU     $0138
+WSLREG:         EQU     $013B
+CSRY:           EQU     $F3DC
+CSRX:           EQU     $F3DD
+ERAFNK:         EQU     $00CC
+DSPFNK:         EQU     $00CF
+PROCNM:         EQU     $FD89
+XF365:          EQU     $F365                  ; routine read primary slotregister
+
+DEVICE:         equ     0FD99H
+
+txttab:         equ     $f676
+vartab:         equ     $f6c2
+arytab:         equ     $f6c4
+strend:         equ     $f6c6
+SLTATR:         equ     $fcc9
+CALBAS:         equ     $0159
+CHRGTR:         equ     $4666
+
+ERRHAND:        EQU     $406F
+FRMEVL:         EQU     $4C64
+FRESTR:         EQU     $67D0
+VALTYP:         EQU     $F663
+USR:            EQU     $F7F8
+RAMAD3:         EQU     $F344
+ERRFLG:         EQU     $F414
+HIMEM:          EQU     $FC4A
+MSXPICALLBUF:   EQU     $E3D8
 
 ; This is a MSX-DOS program
 ; STart address is $100
@@ -516,6 +558,3 @@ fcb_al: db 0,0,0,0      ; File size in bytes (1~4294967296).
 fcb_cr: db 0            ; Current record within extent (0...127)
 fcb_rn: db 0,0,0,0      ; Random record number. If record size <64 then all 4 bytes will be used.
         db 0,0,0
-
-INCLUDE "include.asm"
-

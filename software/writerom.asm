@@ -51,7 +51,7 @@ BDOS:           EQU     5
 
 ; if could not find the cartridge, exit with error message
         ld      hl,txt_ramnotfound
-        jr      c,printmsg
+        jp      c,print
 
 ; Found writable memory therefore can continue writing the ROM into the eeprom
 instcall:
@@ -65,7 +65,7 @@ instcall:
         ld      hl,txt_ramnotfound
 
 ; Could not write - print error
-        jr      nz,printmsg
+        jp      nz,print
 
         push    af
         ld      hl,txt_ramfound
@@ -90,28 +90,51 @@ instcall:
         xor    a
         ld    (hl),a  ; insert a zero at the end of the parameter to find when to stop parsing 
 
-        
+        call    fcb_reset
         call    readcliparms
-
-        ld      a,(fcb)
-        call    printnumber
-        xor     a
-        ld      (fcb+12),a
-        ld      hl,fcb+1
-        call    print
-
-        ld      a,"*"
-        call    PUTCHAR
-
-
-        ld      hl,txt_completed
-        call    print
+        call    openfile
+        call    readfileblock
+        call    z,printblock
 
         ret
-; 83 = 1010011
 
-printmsg:
-        call    print
+openfile:
+        ld     c,$0f
+        ld     de,fcb
+        call   BDOS
+        cp     $ff
+        jr     z, fnotfounderr
+        ld     hl,txt_ffound
+        or     a
+        call   z, print
+        ret 
+
+fnotfounderr:
+        ld     hl,txt_fnotfound
+        call   print
+        ret
+
+readfileblock:
+        ld      c,$14
+        ld      de,fcb
+        call    BDOS
+        ld     hl,txt_err_reading
+        cp     $00
+        ret    z
+        jp     print
+
+printblock:
+        ld      b,128
+        ld      hl,$80
+printblock0:
+        push    bc
+        push    hl
+        ld      a,(hl)
+        call    PUTCHAR
+        pop     hl
+        pop     bc
+        inc     hl
+        djnz    printblock0
         ret
 
 relocprog1:
@@ -413,6 +436,13 @@ fillwithspaces:
         djnz  fillwithspaces
         ret
 
+fcb_reset:
+        ld    hl, fcb_reset_data
+        ld    de, fcb
+        ld    bc,37
+        ldir
+        ret
+
 ; ===============================================================
 
 txt_ramsearch:   db      "Search for ram in $4000",13,10,0
@@ -422,6 +452,12 @@ txt_ramnotfound:   db      "ram not found",13,10,0
 txt_writingflash:   db      "Writing to EEPROM...",13,10,0
 txt_completed: db      "Completed.",13,10,0
 txt_nofn:         db "Filename is empty or not valid",13,10,0
+txt_fileopenerr:  db "Error opening file",13,10,0
+txt_fnotfound: db "File not found",13,10,0
+txt_ffound: db "Reading file",13,10,0
+txt_err_reading: db "Error reading data from file",13,10,0
+
+fcb_reset_data:   db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 fcb:
 ; reference: https://www.msx.org/wiki/FCB    
@@ -454,6 +490,7 @@ fcb_al: db 0,0,0,0      ; File size in bytes (1~4294967296).
                         ; from top of the file to the last cluster accessed. (DOS1)
 fcb_cr: db 0            ; Current record within extent (0...127)
 fcb_rn: db 0,0,0,0      ; Random record number. If record size <64 then all 4 bytes will be used.
+        db 0,0,0
 
 INCLUDE "include.asm"
 

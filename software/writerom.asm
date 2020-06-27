@@ -33,7 +33,8 @@
 ; 1.0    : initial version
 TEXTTERMINATOR: EQU     0
 BDOS:           EQU     5
-
+dma:			EQU		$80
+regsize:		equ		128
 
 ; This is a MSX-DOS program
 ; STart address is $100
@@ -93,11 +94,33 @@ instcall:
         call    fcb_reset
         call    readcliparms
         call    openfile
-        call    readfileblock
-        call    z,printblock
+		call    setdma
 
+writeeeprom:
+        call    readfileregister	; read 1 blok of data from disk
+		cp		1					; error or end of file ?
+		jr		z,endofreading
+: debug purposes - print on screen the file read
+        ld      b,regsize
+        ld      hl,dma
+printblock0:
+        ld      a,(hl)
+		push	bc
+		push	hl
+        call    PUTCHAR
+		pop		hl
+		pop		bc
+        inc     hl
+        djnz    printblock0
         ret
 
+        ret
+endofreading:
+		ld		hx,txt_endoffile
+		jp 		print
+; this is where the program ends		
+		
+		
 openfile:
         ld     c,$0f
         ld     de,fcb
@@ -114,28 +137,25 @@ fnotfounderr:
         call   print
         ret
 
-readfileblock:
-        ld      c,$14
-        ld      de,fcb
-        call    BDOS
-        ld     hl,txt_err_reading
-        cp     $00
-        ret    z
-        jp     print
+readfileregister:
+		ld     hl,regsize	; read 128 bytes at a time (register is set to size 1 in fcb)
+        ld     c,$27
+        ld     de,fcb
+        call   BDOS
+		ret
 
-printblock:
-        ld      b,128
-        ld      hl,$80
-printblock0:
-        push    bc
-        push    hl
-        ld      a,(hl)
-        call    PUTCHAR
-        pop     hl
-        pop     bc
-        inc     hl
-        djnz    printblock0
-        ret
+		
+setdma:
+		ld		de,dma
+		lc		c,$1a
+		call	bdos
+		ld		hl,1		;tamanho dos registros
+		ld		(fcb+14),hl
+		ldir	hl,0
+		ld		(fcb+32),hl
+		ld		(fcb+34),hl
+		ld		(fcb+36),hl
+		ret
 
 relocprog1:
         push    af
@@ -437,10 +457,16 @@ fillwithspaces:
         ret
 
 fcb_reset:
-        ld    hl, fcb_reset_data
-        ld    de, fcb
-        ld    bc,37
+        ld    hl, fcb
+		ld    (hl),0
+        ld    de, fcb+1
+        ld    bc,$23
         ldir
+		ld    hl,fcb+1
+		ld    (hl),$20
+		ld    de,fcb+2
+		ld    bc,$000a
+		ldir
         ret
 
 ; ===============================================================
@@ -456,8 +482,6 @@ txt_fileopenerr:  db "Error opening file",13,10,0
 txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
-
-fcb_reset_data:   db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 fcb:
 ; reference: https://www.msx.org/wiki/FCB    

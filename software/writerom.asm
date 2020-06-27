@@ -139,7 +139,7 @@ instcall:
 		call    setdma
 
 writeeeprom:
-        call    readfileregister	; read 1 blok of data from disk
+        call    readfileregister	; read 1 block of data from disk
 		cp		1					; error or end of file ?
 		jr		z,endofreading
 ; debug purposes - print on screen the file read
@@ -158,6 +158,10 @@ printblock0:
 
         ret
 endofreading:
+        ld      a,h
+        call    printnumber
+        ld      a,l
+        call    printnumber
 		ld		hl,txt_endoffile
 		jp 		print
 ; this is where the program ends		
@@ -193,7 +197,7 @@ setdma:
 		call	BDOS
 		ld		hl,1		;tamanho dos registros
 		ld		(fcb+14),hl
-		ldir	hl,0
+		dec     hl
 		ld		(fcb+32),hl
 		ld		(fcb+34),hl
 		ld		(fcb+36),hl

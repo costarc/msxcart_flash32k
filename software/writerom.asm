@@ -100,7 +100,7 @@ writeeeprom:
         call    readfileregister	; read 1 blok of data from disk
 		cp		1					; error or end of file ?
 		jr		z,endofreading
-: debug purposes - print on screen the file read
+; debug purposes - print on screen the file read
         ld      b,regsize
         ld      hl,dma
 printblock0:
@@ -116,7 +116,7 @@ printblock0:
 
         ret
 endofreading:
-		ld		hx,txt_endoffile
+		ld		hl,txt_endoffile
 		jp 		print
 ; this is where the program ends		
 		
@@ -147,8 +147,8 @@ readfileregister:
 		
 setdma:
 		ld		de,dma
-		lc		c,$1a
-		call	bdos
+		ld		c,$1a
+		call	BDOS
 		ld		hl,1		;tamanho dos registros
 		ld		(fcb+14),hl
 		ldir	hl,0
@@ -482,6 +482,7 @@ txt_fileopenerr:  db "Error opening file",13,10,0
 txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
+txt_endoffile:   db "End of file",13,10,0
 
 fcb:
 ; reference: https://www.msx.org/wiki/FCB    

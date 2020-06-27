@@ -140,10 +140,10 @@ instcall:
 
 writeeeprom:
         call    readfileregister	; read 1 block of data from disk
-		cp		1					; error or end of file ?
-		jr		z,endofreading
+		push    af
 ; debug purposes - print on screen the file read
-        ld      b,regsize
+        ld      b,h
+        ld      c,l
         ld      hl,dma
 printblock0:
         ld      a,(hl)
@@ -153,9 +153,15 @@ printblock0:
 		pop		hl
 		pop		bc
         inc     hl
-        djnz    printblock0
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,printblock0
+        pop     af
+        cp      1                   ; error or end of file ?
+        jr      z,endofreading
         jr      writeeeprom
-        
+
 endofreading:
         ld      a,h
         call    printnumber

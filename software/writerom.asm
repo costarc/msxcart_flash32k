@@ -154,9 +154,8 @@ printblock0:
 		pop		bc
         inc     hl
         djnz    printblock0
-        ret
-
-        ret
+        jr      writeeeprom
+        
 endofreading:
         ld      a,h
         call    printnumber

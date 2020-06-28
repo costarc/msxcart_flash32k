@@ -34,10 +34,11 @@
 ; Compile with z80asm: 
 ;  z80asm writerom.asm writerom.asm -o writerom.com
 
+dma: 			equ $80
+regsize:		equ		1
+numregtoread:	equ		1
 TEXTTERMINATOR: EQU     0
 BDOS:           EQU     5
-dma:			EQU		$80
-regsize:		equ		128
 CALLSTAT:       EQU     $55A8
 INLINBUF:       EQU     $F55E
 INLIN:          EQU     $00B1
@@ -82,19 +83,20 @@ MSXPICALLBUF:   EQU     $E3D8
 ; STart address is $100
 
         org     $100
-        ld      hl,txt_ramsearch
-        call    print
+	
+        ;ld      hl,txt_ramsearch
+        ;call    print
 
-        ld      c,040H
-        call    PG1RAMSEARCH
+        ;ld      c,040H
+        ;call    PG1RAMSEARCH
 
 ; Reenable interrupts that was disabled by RDSLT
 
         ei
 
 ; if could not find the cartridge, exit with error message
-        ld      hl,txt_ramnotfound
-        jp      c,print
+        ;ld      hl,txt_ramnotfound
+        ;jp      c,print
 
 ; Found writable memory therefore can continue writing the ROM into the eeprom
 instcall:
@@ -102,49 +104,49 @@ instcall:
 ; PG1RAMSEARCH return in A the slot id where RAM was found
 ; Test (again?) fi can write in the $4000 area of the slot 
         push    af
-        call    ramcheck
+        ;call    ramcheck
         pop     af
 
         ld      hl,txt_ramnotfound
 
 ; Could not write - print error
-        jp      nz,print
+        ;jp      nz,print
 
         push    af
         ld      hl,txt_ramfound
-        call    print
+        ;call    print
         pop     af
         push    af
-        call    PRINTNUMBER
+        ;call    PRINTNUMBER
         ld      hl,txt_newline
-        call    print
+        ;call    print
         ld      hl,txt_writingflash
-        call    print
+        ;call    print
         pop     af
 
 ; read filename passed with DOS command line
-
-        ld     hl,$80
-        ld     a,(hl)
-        ld     e,a
-        ld     d,0
-        add    hl,de
-        inc    hl
-        xor    a
-        ld    (hl),a  ; insert a zero at the end of the parameter to find when to stop parsing 
-
-        call    fcb_reset
+; and update fcb with filename
+        call    resetfcb
         call    readcliparms
         call    openfile
+        cp     $ff
+        jr     z, fnotfounderr	
 		call    setdma
-
 writeeeprom:
         call    readfileregister	; read 1 block of data from disk
-		push    af
-; debug purposes - print on screen the file read
-        ld      b,h
-        ld      c,l
-        ld      hl,dma
+		cp		2
+		jr		nc,filereaderr		; some error
+		ld		d,a					; save error in D for a while
+		ld		a,h
+		or		l
+		jr		z,endofreading		; number of bytes read is zero, end.
+		push	de					; save error code because this might be
+									; the last record of the file. will test 
+									; at the end of this loop, below.
+        ld      b,l     ; hl = number of bytes read from disk, but we are
+						; reading only 128 bytes at a time
+						; therefore fits in register b
+        ld      hl,dma	; Area where the record was written
 printblock0:
         ld      a,(hl)
 		push	bc
@@ -153,34 +155,22 @@ printblock0:
 		pop		hl
 		pop		bc
         inc     hl
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,printblock0
-        pop     af
-        cp      1                   ; error or end of file ?
-        jr      z,endofreading
+		djnz	printblock0
+		pop 	af				; retrieve the error code
+		cp		1				; 1 = this was last record.
+		jr		z,endofreading		
         jr      writeeeprom
 
 endofreading:
-        ld      a,h
-        call    printnumber
-        ld      a,l
-        call    printnumber
-		ld		hl,txt_endoffile
-		jp 		print
+
+		ret
+		
 ; this is where the program ends		
-		
-		
+
 openfile:
         ld     c,$0f
         ld     de,fcb
         call   BDOS
-        cp     $ff
-        jr     z, fnotfounderr
-        ld     hl,txt_ffound
-        or     a
-        call   z, print
         ret 
 
 fnotfounderr:
@@ -188,19 +178,23 @@ fnotfounderr:
         call   print
         ret
 
+filereaderr:
+        ld     hl,txt_err_reading
+        call   print
+        ret
+		
 readfileregister:
-		ld     hl,regsize	; read 128 bytes at a time (register is set to size 1 in fcb)
+		ld     hl,numregtoread	; read 128 bytes at a time (register is set to size 1 in fcb)
         ld     c,$27
         ld     de,fcb
         call   BDOS
 		ret
 
-		
 setdma:
 		ld		de,dma
 		ld		c,$1a
 		call	BDOS
-		ld		hl,1		;tamanho dos registros
+		ld		hl,regsize		;tamanho dos registros
 		ld		(fcb+14),hl
 		dec     hl
 		ld		(fcb+32),hl
@@ -405,119 +399,149 @@ PUTCHAR:
 ; Get parameters from DOS CLI
 ; ===============================================================
 readcliparms:
-        ld    hl,$80
-        ld    de,fcb
-
-; Get number of characters in the command line
-; will return the total number + 1 (because includes the space after the program name)
-        ld    a,(hl)
-        inc   hl
-        or    a
-        jr    z,err_nofname
-
-; sanitize parms, cleaning spaces before the parameters
-parsefn:
-
-remove_spaces:
-; remove all spaces in the beginning of the CLI parameters
-        ld    a,(hl)
-        or    a
-        jr    z,err_nofname
-        cp    ' '
-        jr    nz, finddrive
-        inc   hl
-        djnz  remove_spaces
-
-; CLI does not contain a filename as parameters
-err_nofname:
-        ld    hl,txt_nofn
-        jp    print
-
-; Verify if the parameter has a drive specification "X:"
-finddrive:
-        inc    hl
-        ld     a,(hl)
-        dec    hl
-        cp     ":"
-        jr     z,getdrive
-        xor    a               ; set current drive in the FCB
-        ld     (de),a
-        jr     getfname       ; go read filename
-
-getdrive:
+		ld		de,fcb
+		xor		a
+		ld		(de),a
+		ld		hl,dma+1
+		call	pulaesp
+		call	testacar
+		ld		c,a
+		inc		hl
+		ld		a,(hl)
+		dec		hl
+		cp		':'
+		ld		a,c
+		jr		nz,lenome_ext
+		inc		hl
+		inc		hl
 ; CLI paramaters contain drive specification
 ; 0 = current
 ; 1 = drive A
 ; 2 = drive B and so on.
-        ld     a,(hl)
-        ld     c,'a'
-        cp     'a'
-        jr     nc,getdrive_lowercase
-        ld     c,'A'
-getdrive_lowercase:
-        sub    c     
-        inc    a        ; if drive in CLI was "A:" this will set "1" in the FCB
-                        ; if drive in CLI was "B:" this will set "2" in the FCB 
-        ld     (de),a
-        inc    hl
-        inc    hl
+		sub		$41
+		jr		c,espinval
+		inc		a
+		ld		(de),a
+		jr		lenome_ext
+espinval:
+		ld		a,$ff		; invalid drive to force bdos to return error
+		ld		(de),a
+lenome_ext:
+		inc		de
+		ld		c,0
+		ld		b,8
+		call	lenome
+		ld		a,(hl)
+		cp		'.'
+		jr		nz,fimnome_ext
+		inc		hl
+		ld		b,3
+		call	lenome_0
+fimnome_ext:
+		ld		a,c
+		ret
+lenome:
+		call	testacar
+		jr		c,codesp
+		jr		z,codesp
+lenome_0:
+		call	testacar
+		jr		c,tstfimle
+		jr		z,tstfimle
+		inc		hl
+		inc		b
+		dec		b
+		jr		z,lenome_0
+		cp		'*'
+		jr		z,coringa
+		ld		(de),a
+		inc		de
+		dec		b
+		cp		'?'
+		jr		z,acheicor
+		jr		lenome_0
+coringa:
+		call	subscor
+acheicor:
+		ld		c,1
+codesp:
+		ld		a,e
+		add		a,b
+		ld		e,a
+		ret		nc
+		inc		d
+		ret
+tstfimle:
+		inc		b
+		dec		b
+		ret		z
+		ld		a,' '
+		jr		preenche
+subscor:
+		ld		a,'?'
+preenche:
+		ld		(de),a
+		inc		de
+		djnz	preenche
+		ret
+pulaesp:
+		ld		a,(hl)
+		inc		hl
+		call	testaesp
+		jr		z,pulaesp
+		dec		hl
+		ret
+testacar:
+		ld		a,(hl)
+		cp		'a'
+		jr		c,testacar_1
+		cp		$7b
+		jr		nc,testacar_1
+		sub		$20
+testacar_1:	
+		cp		':'
+		ret		z
+		cp		'.'
+		ret		z
+		cp		$22
+		ret		z
+		cp		'['
+		ret		z
+		cp		']'
+		ret		z
+		cp		'_'
+		ret		z
+		cp		'/'
+		ret		z
+		cp		'+'
+		ret		z
+		cp		'='
+		ret		z
+		cp		';'
+		ret		z
+		cp		','
+		ret		z
+testaesp:
+		cp		$09
+		ret		z
+		cp		' '
+		ret
 
-getfname:
-        inc   de       ; DE pointing to start of fname in FCB
-        ld    b,8      ; will loop 8 times to fill fname filed in the FCB
-
-; read up to 8 characters for the filename
-readnextchar:
-        ld    a,(hl)
-        cp    "."
-        jr    z,fillwithspaces_fn
-        or    a
-        jr    z,fillwithspaces_fn
-        ld    (de),a
-        inc   hl
-        inc   de
-        djnz  readnextchar
-        jr    setfnext
-
-fillwithspaces_fn:
-        call  fillwithspaces   ; fill fcb_fn with spaces when name less than 8 chars   
-        ld    b,3
-setfnext:
-        ld    a,(hl)
-        inc   hl
-        or    a
-        jr    z,fillwithspaces_ext
-        cp    "."
-        jr    nz,extnextchar
-        jr    setfnext
-extnextchar:
-        ld    (de),a
-        inc   de
-        djnz  readnextchar
-        ret
-
-fillwithspaces_ext:
-       call    fillwithspaces
-       ret
-
-fillwithspaces:
-        ld    a,' '
-        ld    (de),a
-        inc   de
-        djnz  fillwithspaces
-        ret
-
-fcb_reset:
-        ld    hl, fcb
+resetfcb:
+		ex	  af,af'
+		exx
+        ld    hl,fcb
 		ld    (hl),0
-        ld    de, fcb+1
+        ld    de,fcb+1
         ld    bc,$23
         ldir
-		ld    hl,fcb+1
-		ld    (hl),$20
-		ld    de,fcb+2
-		ld    bc,$000a
+		ld    hl,fcb_fn
+		ld    (hl),' '
+		ld    de,fcb_fn+1
+		ld    bc,10
 		ldir
+		exx
+		ex	  af,af'
         ret
 
 ; ===============================================================

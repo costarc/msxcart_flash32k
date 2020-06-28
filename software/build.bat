@@ -1,0 +1,1 @@
+C:\Users\Elite\Dev\z88dk\bin\z80asm.exe --cpu=z80 -b --output=C:\Users\Elite\Desktop\openMSX\MSXDOS1\%1.com %1.asm

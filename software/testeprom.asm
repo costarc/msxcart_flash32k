@@ -96,8 +96,6 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
 
 ; Reenable interrupts that was disabled by RDSLT
 
-        ei
-
 ; if could not find the cartridge, exit with error message
         ld      hl,txt_ramnotfound
         jp      c,print
@@ -117,55 +115,19 @@ instcall:
         call    print
         pop     af  ; slot with ram is in (thisslt)
 
-; read filename passed with DOS command line
-; and update fcb with filename
-        call    resetfcb
-        call    readcliparms
-        call    openfile
-        cp      $ff
-        jr      z, fnotfounderr 
-        call    setdma
         ld      a,(thisslt)
         ld      h,$40
         call    ENASLT
         ld      a,(thisslt)
         ld      h,$80
         call    ENASLT
-        call    erase_chip
-        ld      de,$4000
-        ld      (curraddr),de
-writeeeprom:
-        ld      a,'.'
-        call    PUTCHAR
-        call    readfileregister    ; read 1 block of data from disk
-        cp      2
-        jr      nc,filereaderr      ; some error
-        ld      d,a                 ; save error in D for a while
-        ld      a,h
-        or      l
-        jr      z,endofreading      ; number of bytes read is zero, end.
-        push    de                  ; save error code because this might be
-                                    ; the last record of the file. will test 
-                                    ; at the end of this loop, below.
-        ld      b,l     ; hl = number of bytes read from disk, but we are
-                        ; reading only 128 bytes at a time
-                        ; therefore fits in register b
-        ld      hl,dma  ; Area where the record was written
-        di
-        ;call    enable_w_prot   ;will send protection command, that allow written once to the EEPROM
-writeeeprom0:
-        ld      a,(hl)
-        push    bc
-        push    hl
-        call    writebyte
-        pop     hl
-        pop     bc
-        inc     hl
-        djnz    writeeeprom0
-        pop     af              ; retrieve the error code
-        cp      1               ; 1 = this was last record.
-        jr      z,endofreading   
-        jr      writeeeprom
+        xor     a
+        ld      ($4010),a
+        ld      ($8010),a
+        ld      hl,$4000
+        call    print
+        ld      hl,$8000
+        call    print
 endofreading:
         ld      a,(RAMAD1)
         ld      h,$40
@@ -173,8 +135,6 @@ endofreading:
         ld      a,(RAMAD2)
         ld      h,$80
         call    ENASLT
-        ld      hl,txt_endoffile
-        call    print
         call    enable_w_prot
         ei
         ret

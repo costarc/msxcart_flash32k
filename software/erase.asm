@@ -90,8 +90,8 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
     
         ld      hl,txt_ramsearch
         call    print
-
         call    disable_w_prot
+        ld      c,$40
         call    search_eeprom
 
 ; Reenable interrupts that was disabled by RDSLT
@@ -103,7 +103,6 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
         jp      c,print
 
 ; Found writable memory therefore can continue writing the ROM into the eeprom
-instcall:
 
         push    af
         ld      hl,txt_ramfound
@@ -113,114 +112,64 @@ instcall:
         call    PRINTNUMBER
         ld      hl,txt_newline
         call    print
-        ld      hl,txt_ffound
-        call    print
         pop     af  ; slot with ram is in (thisslt)
-
-; read filename passed with DOS command line
-; and update fcb with filename
-        call    resetfcb
-        call    readcliparms
-        call    openfile
-        cp      $ff
-        jr      z, fnotfounderr 
-        call    setdma
-        ld      a,(thisslt)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(thisslt)
-        ld      h,$80
-        call    ENASLT
-        call    erase_chip
-        ld      de,$4000
-        ld      (curraddr),de
-writeeeprom:
-        ld      a,'.'
-        call    PUTCHAR
-        call    readfileregister    ; read 1 block of data from disk
-        cp      2
-        jr      nc,filereaderr      ; some error
-        ld      d,a                 ; save error in D for a while
-        ld      a,h
-        or      l
-        jr      z,endofreading      ; number of bytes read is zero, end.
-        push    de                  ; save error code because this might be
-                                    ; the last record of the file. will test 
-                                    ; at the end of this loop, below.
-        ld      b,l     ; hl = number of bytes read from disk, but we are
-                        ; reading only 128 bytes at a time
-                        ; therefore fits in register b
-        ld      hl,dma  ; Area where the record was written
-        di
-        ;call    enable_w_prot   ;will send protection command, that allow written once to the EEPROM
-writeeeprom0:
-        ld      a,(hl)
-        push    bc
-        push    hl
-        call    writebyte
-        pop     hl
-        pop     bc
-        inc     hl
-        djnz    writeeeprom0
-        pop     af              ; retrieve the error code
-        cp      1               ; 1 = this was last record.
-        jr      z,endofreading   
-        jr      writeeeprom
-endofreading:
-        ld      a,(RAMAD1)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(RAMAD2)
-        ld      h,$80
-        call    ENASLT
-        ld      hl,txt_endoffile
-        call    print
-        call    enable_w_prot
-        ei
-        ret
-
-fnotfounderr:
-        ld     hl,txt_fnotfound
-        call   print
-        ret
-
-writebyte:
-        ld      de,(curraddr)
-        ld      (de),a
-        inc     de
-        ld      (curraddr),de   ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
-        ret
-
-; this is where the program ends        
-
-openfile:
-        ld     c,$0f
-        ld     de,fcb
-        call   BDOS
-        ret 
-
-filereaderr:
-        ld     hl,txt_err_reading
-        call   print
+        call    disable_w_prot
         ret
         
-readfileregister:
-        ld     hl,numregtoread  ; read 128 bytes at a time (register is set to size 1 in fcb)
-        ld     c,$27
-        ld     de,fcb
-        call   BDOS
+; ===============================================================
+; Atmel AT28C256 Programming code
+; ===============================================================
+; Disable write-protection
+disable_w_prot:
+        push    af
+        ld      a, $AA
+        ld      ($5555),a 
+        ld      a, $55
+        ld      ($2AAA),a 
+        ld      a, $80
+        ld      ($5555),a 
+        ld      a, $AA
+        ld      ($5555),a 
+        ld      a, $55
+        ld      ($2AAA),a 
+        ld      a, $20
+        ld      ($5555),a 
+        pop     af
         ret
 
-setdma:
-        ld      de,dma
-        ld      c,$1a
-        call    BDOS
-        ld      hl,regsize      ;tamanho dos registros
-        ld      (fcb+14),hl
-        dec     hl
-        ld      (fcb+32),hl
-        ld      (fcb+34),hl
-        ld      (fcb+36),hl
+; Enable write-protection
+enable_w_prot:
+        push    af
+        ld      a, $AA
+        ld      ($5555),a 
+        exx
+        exx
+        ld      a, $55
+        ld      ($2AAA),a 
+        exx
+        exx
+        ld      a, $A0
+        ld      ($5555),a 
+        exx
+        exx
+        pop     af
+        ret
+
+erase_chip:
+        push    af
+        ld      a, $AA
+        ld      ($5555),a 
+        ld      a, $55
+        ld      ($2AAA),a 
+        ld      a, $80
+        ld      ($5555),a 
+        ld      a, $AA
+        ld      ($5555),a 
+        ld      a, $55
+        ld      ($2AAA),a 
+        ld      a, $10
+        ld      ($5555),a 
+        pop     af
         ret
 
 ;-----------------------
@@ -444,59 +393,6 @@ resetfcb:
         ex    af,af'
         ret
 
-; ===============================================================
-; Atmel AT28C256 Programming code
-; ===============================================================
-; Disable write-protection
-disable_w_prot:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $20
-        ld      ($9555),a
-        call    waitforwrite
-        pop     af
-        ret
-
-; Enable write-protection
-enable_w_prot:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $A0
-        ld      ($9555),a 
-        call    waitforwrite
-        pop     af
-        ret
-
-erase_chip:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $10
-        ld      ($9555),a 
-        call    waitforwrite
-        pop     af
-        ret
-
 ; Search for the EEPROM
 search_eeprom:
         ld      a,$FF
@@ -565,6 +461,10 @@ waitforwrite0:
         or      c
         jr      nz,waitforwrite0
         pop     bc
+        ret
+
+writeeprom:
+
         ret
 
 ; -------------------------------------------------------

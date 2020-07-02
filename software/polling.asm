@@ -91,7 +91,7 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
         ld      hl,txt_ramsearch
         call    print
 
-        call    disable_w_prot
+        ld      c,$40
         call    search_eeprom
 
 ; Reenable interrupts that was disabled by RDSLT
@@ -131,41 +131,29 @@ instcall:
         ld      a,(thisslt)
         ld      h,$80
         call    ENASLT
+        call    disable_w_prot
+        call    waitforwrite
         call    erase_chip
+        call    waitforwrite
         ld      de,$4000
         ld      (curraddr),de
+
 writeeeprom:
-        ld      a,'.'
-        call    PUTCHAR
-        call    readfileregister    ; read 1 block of data from disk
-        cp      2
-        jr      nc,filereaderr      ; some error
-        ld      d,a                 ; save error in D for a while
-        ld      a,h
-        or      l
-        jr      z,endofreading      ; number of bytes read is zero, end.
-        push    de                  ; save error code because this might be
-                                    ; the last record of the file. will test 
-                                    ; at the end of this loop, below.
-        ld      b,l     ; hl = number of bytes read from disk, but we are
-                        ; reading only 128 bytes at a time
-                        ; therefore fits in register b
-        ld      hl,dma  ; Area where the record was written
-        di
-        ;call    enable_w_prot   ;will send protection command, that allow written once to the EEPROM
+        ld      hl,txt_pollingtest
 writeeeprom0:
         ld      a,(hl)
-        push    bc
+        or      a
+        jr      z,endofreading
         push    hl
-        call    writebyte
+        push    af
+        call    writebyteandprot
+        pop     af
+        call    polleeprom
         pop     hl
-        pop     bc
-        inc     hl
-        djnz    writeeeprom0
-        pop     af              ; retrieve the error code
-        cp      1               ; 1 = this was last record.
-        jr      z,endofreading   
-        jr      writeeeprom
+        jr      c,endofreading
+        inc     hl 
+        jr      writeeeprom0
+
 endofreading:
         ld      a,(RAMAD1)
         ld      h,$40
@@ -175,7 +163,6 @@ endofreading:
         call    ENASLT
         ld      hl,txt_endoffile
         call    print
-        call    enable_w_prot
         ei
         ret
 
@@ -184,11 +171,40 @@ fnotfounderr:
         call   print
         ret
 
-writebyte:
+polleeprom:
+        ld     b,a
+polleeprom0:
+        ld     a,b
+        cpl
+        ld     c,a
+        ld     a,(hl)
+        cp     b
+        jr     z,writedone
+        cp     c
+        jr     z,writegoing
+        call   PRINTNUMBER
+        jr     polleeprom0
+        ld     hl, txt_pollerror
+        call   print
+        scf
+        ret
+writegoing:
+        ld     a,'?'
+        out    ($98),a
+        jr     polleeprom0
+writedone:
+        ld      a,">"
+        out     ($98),a
+        or      a
+        ret
+
+writebyteandprot:
+        ;call    enable_w_prot   ;will send protection command, that allow written once to the EEPROM
         ld      de,(curraddr)
         ld      (de),a
         inc     de
         ld      (curraddr),de   ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
+        ;call    waitforwrite
         ret
 
 ; this is where the program ends        
@@ -451,49 +467,47 @@ resetfcb:
 disable_w_prot:
         push    af
         ld      a, $AA
-        ld      ($9555),a 
+        ld      ($5555),a 
         ld      a, $55
-        ld      ($6AAA),a 
+        ld      ($2AAA),a 
         ld      a, $80
-        ld      ($9555),a 
+        ld      ($5555),a 
         ld      a, $AA
-        ld      ($9555),a 
+        ld      ($5555),a 
         ld      a, $55
-        ld      ($6AAA),a 
+        ld      ($2AAA),a 
         ld      a, $20
-        ld      ($9555),a
-        call    waitforwrite
+        ld      ($5555),a 
         pop     af
         ret
 
 ; Enable write-protection
 enable_w_prot:
+        ret
         push    af
         ld      a, $AA
-        ld      ($9555),a
+        ld      ($5555),a 
         ld      a, $55
-        ld      ($6AAA),a 
+        ld      ($2AAA),a 
         ld      a, $A0
-        ld      ($9555),a 
-        call    waitforwrite
+        ld      ($5555),a 
         pop     af
         ret
 
 erase_chip:
         push    af
         ld      a, $AA
-        ld      ($9555),a 
+        ld      ($5555),a 
         ld      a, $55
-        ld      ($6AAA),a 
+        ld      ($2AAA),a 
         ld      a, $80
-        ld      ($9555),a 
+        ld      ($5555),a 
         ld      a, $AA
-        ld      ($9555),a 
+        ld      ($5555),a 
         ld      a, $55
-        ld      ($6AAA),a 
+        ld      ($2AAA),a 
         ld      a, $10
-        ld      ($9555),a 
-        call    waitforwrite
+        ld      ($5555),a 
         pop     af
         ret
 
@@ -627,7 +641,9 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-
+txt_pollingtest: db "ABC TEST",0
+txt_pollerror: db "Polling returned unexpectd data",13,10,0
+txt_pollsuccess: db "End of polloing, eeprom ready for new byte.",13,10,0
 thisslt: db $FF
 curraddr: dw $0000
 

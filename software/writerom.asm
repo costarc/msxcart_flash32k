@@ -34,9 +34,9 @@
 ; Compile with z80asm: 
 ;  z80asm writerom.asm writerom.asm -o writerom.com
 
-dma: 			equ $80
-regsize:		equ		1
-numregtoread:	equ		64
+dma:            equ $80
+regsize:        equ     1
+numregtoread:   equ     64
 TEXTTERMINATOR: EQU     0
 BDOS:           EQU     5
 CALLSTAT:       EQU     $55A8
@@ -87,12 +87,12 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
 ; STart address is $100
 
         org     $100
-	
+    
         ld      hl,txt_ramsearch
         call    print
 
         ld      c,$40
-        call    search_eeprom ;detect_eprom / PG1RAMSEARCH
+        call    search_eeprom
 
 ; Reenable interrupts that was disabled by RDSLT
 
@@ -123,57 +123,69 @@ instcall:
         call    readcliparms
         call    openfile
         cp      $ff
-        jr      z, fnotfounderr	
-		call    setdma
-        ld      hl,$4000
-        ld      (curraddr),hl
-        ;call    disable_w_prot
+        jr      z, fnotfounderr 
+        call    setdma
         ld      a,(thisslt)
         ld      h,$40
         call    ENASLT
+        ld      a,(thisslt)
+        ld      h,$80
+        call    ENASLT
+        ld      de,$4000
+        ld      (curraddr),de
 writeeeprom:
         ld      a,'.'
         call    PUTCHAR
-        call    readfileregister	; read 1 block of data from disk
-		cp		2
-		jr		nc,filereaderr		; some error
-		ld		d,a					; save error in D for a while
-		ld		a,h
-		or		l
-		jr		z,endofreading		; number of bytes read is zero, end.
-		push	de					; save error code because this might be
+        call    readfileregister    ; read 1 block of data from disk
+        cp      2
+        jr      nc,filereaderr      ; some error
+        ld      d,a                 ; save error in D for a while
+        ld      a,h
+        or      l
+        jr      z,endofreading      ; number of bytes read is zero, end.
+        push    de                  ; save error code because this might be
                                     ; the last record of the file. will test 
-                                    ; at the end of this loop, below.        
-
+                                    ; at the end of this loop, below.
         ld      b,l     ; hl = number of bytes read from disk, but we are
-						; reading only 128 bytes at a time
-						; therefore fits in register b
-        ld      hl,dma	; Area where the record was written
+                        ; reading only 128 bytes at a time
+                        ; therefore fits in register b
+        ld      hl,dma  ; Area where the record was written
         di
 writeeeprom0:
         ld      a,(hl)
-        ld      de,(curraddr)
-        ld      (de),a
-        inc     de
-        ld      (curraddr),de
+        push    bc
+        push    hl
+        call    writebyteandprot
+        pop     hl
+        pop     bc
         inc     hl
-        call    waitforwrite
-		djnz	writeeeprom0
-		pop 	af				; retrieve the error code
-		cp		1				; 1 = this was last record.
-		jr		z,endofreading
+        djnz    writeeeprom0
+        ei
+        pop     af              ; retrieve the error code
+        cp      1               ; 1 = this was last record.
+        jr      z,endofreading   
         jr      writeeeprom
 endofreading:
         ld      a,(RAMAD1)
         ld      h,$40
         call    ENASLT
-        ;call    enable_w_prot
+        ld      a,(RAMAD2)
+        ld      h,$80
+        call    ENASLT
         ld      hl,txt_endoffile
         call    print
-        ei
-		ret
+        ret
 
-; this is where the program ends		
+writebyteandprot:
+        call    enable_w_prot   ;will send protection command, that allow written once to the EEPROM
+        ld      de,(curraddr)
+        ld      (de),a
+        inc     de
+        ld      (curraddr),de   ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
+        call    waitforwrite
+        ret
+
+; this is where the program ends        
 
 openfile:
         ld     c,$0f
@@ -190,25 +202,25 @@ filereaderr:
         ld     hl,txt_err_reading
         call   print
         ret
-		
+        
 readfileregister:
-		ld     hl,numregtoread	; read 128 bytes at a time (register is set to size 1 in fcb)
+        ld     hl,numregtoread  ; read 128 bytes at a time (register is set to size 1 in fcb)
         ld     c,$27
         ld     de,fcb
         call   BDOS
-		ret
+        ret
 
 setdma:
-		ld		de,dma
-		ld		c,$1a
-		call	BDOS
-		ld		hl,regsize		;tamanho dos registros
-		ld		(fcb+14),hl
-		dec     hl
-		ld		(fcb+32),hl
-		ld		(fcb+34),hl
-		ld		(fcb+36),hl
-		ret
+        ld      de,dma
+        ld      c,$1a
+        call    BDOS
+        ld      hl,regsize      ;tamanho dos registros
+        ld      (fcb+14),hl
+        dec     hl
+        ld      (fcb+32),hl
+        ld      (fcb+34),hl
+        ld      (fcb+36),hl
+        ret
 
 relocprog1:
         push    af
@@ -274,88 +286,6 @@ detect_eprom5:
         DEC     L
         JR      NZ,detect_eprom4
         DJNZ    detect_eprom1
-        SCF
-        RET
-
-PG1RAMSEARCH:
-        LD      HL,EXPTBL
-        LD      B,4
-        XOR     A
-PG1RAMSEARCH1:
-        AND     03H
-        OR      (HL)
-PG1RAMSEARCH2:
-        PUSH    BC
-        PUSH    HL
-        LD      H,C
-PG1RAMSEARCH3:
-        LD      L,10H
-PG1RAMSEARCH4:
-; Switch slot
-        PUSH    AF
-        CALL    RDSLT
-        CPL
-; Save the value read in the register E
-        LD      E,A
-        POP     AF
-        PUSH    DE
-        PUSH    AF
-; Try writing into the memory area of the slot
-; to check if found RAM 
-        CALL    WRSLT
-        POP     AF
-        POP     DE
-        PUSH    AF
-        PUSH    DE
-; Read back the from the slot 
-        CALL    RDSLT
-        POP     BC
-        LD      B,A
-        LD      A,C
-        CPL
-        LD      E,A
-        POP     AF
-        PUSH    AF
-        PUSH    BC
-        CALL    WRSLT
-        POP     BC
-; Check if value written was saved in the memory
-        LD      A,C
-        CP      B
-        JR      NZ,PG1RAMSEARCH6
-        POP     AF
-        DEC     L
-        JR      NZ,PG1RAMSEARCH4
-        INC     H
-        INC     H
-        INC     H
-        INC     H
-        LD      C,A
-        LD      A,H
-        CP      40H
-        JR      Z,PG1RAMSEARCH5
-        CP      80H
-        LD      A,C
-        JR      NZ,PG1RAMSEARCH3
-PG1RAMSEARCH5:
-        LD      A,C
-        POP     HL
-        POP     HL
-        RET
-	
-PG1RAMSEARCH6:
-        POP     AF
-        POP     HL
-        POP     BC
-        AND     A
-        JP      P,PG1RAMSEARCH7
-        ADD     A,4
-        CP      90H
-        JR      C,PG1RAMSEARCH2
-PG1RAMSEARCH7:
-        INC     HL
-        INC     A
-        DJNZ    PG1RAMSEARCH1
         SCF
         RET
 
@@ -435,149 +365,149 @@ PUTCHAR:
 ; Get parameters from DOS CLI
 ; ===============================================================
 readcliparms:
-		ld		de,fcb
-		xor		a
-		ld		(de),a
-		ld		hl,dma+1
-		call	pulaesp
-		call	testacar
-		ld		c,a
-		inc		hl
-		ld		a,(hl)
-		dec		hl
-		cp		':'
-		ld		a,c
-		jr		nz,lenome_ext
-		inc		hl
-		inc		hl
+        ld      de,fcb
+        xor     a
+        ld      (de),a
+        ld      hl,dma+1
+        call    pulaesp
+        call    testacar
+        ld      c,a
+        inc     hl
+        ld      a,(hl)
+        dec     hl
+        cp      ':'
+        ld      a,c
+        jr      nz,lenome_ext
+        inc     hl
+        inc     hl
 ; CLI paramaters contain drive specification
 ; 0 = current
 ; 1 = drive A
 ; 2 = drive B and so on.
-		sub		$41
-		jr		c,espinval
-		inc		a
-		ld		(de),a
-		jr		lenome_ext
+        sub     $41
+        jr      c,espinval
+        inc     a
+        ld      (de),a
+        jr      lenome_ext
 espinval:
-		ld		a,$ff		; invalid drive to force bdos to return error
-		ld		(de),a
+        ld      a,$ff       ; invalid drive to force bdos to return error
+        ld      (de),a
 lenome_ext:
-		inc		de
-		ld		c,0
-		ld		b,8
-		call	lenome
-		ld		a,(hl)
-		cp		'.'
-		jr		nz,fimnome_ext
-		inc		hl
-		ld		b,3
-		call	lenome_0
+        inc     de
+        ld      c,0
+        ld      b,8
+        call    lenome
+        ld      a,(hl)
+        cp      '.'
+        jr      nz,fimnome_ext
+        inc     hl
+        ld      b,3
+        call    lenome_0
 fimnome_ext:
-		ld		a,c
-		ret
+        ld      a,c
+        ret
 lenome:
-		call	testacar
-		jr		c,codesp
-		jr		z,codesp
+        call    testacar
+        jr      c,codesp
+        jr      z,codesp
 lenome_0:
-		call	testacar
-		jr		c,tstfimle
-		jr		z,tstfimle
-		inc		hl
-		inc		b
-		dec		b
-		jr		z,lenome_0
-		cp		'*'
-		jr		z,coringa
-		ld		(de),a
-		inc		de
-		dec		b
-		cp		'?'
-		jr		z,acheicor
-		jr		lenome_0
+        call    testacar
+        jr      c,tstfimle
+        jr      z,tstfimle
+        inc     hl
+        inc     b
+        dec     b
+        jr      z,lenome_0
+        cp      '*'
+        jr      z,coringa
+        ld      (de),a
+        inc     de
+        dec     b
+        cp      '?'
+        jr      z,acheicor
+        jr      lenome_0
 coringa:
-		call	subscor
+        call    subscor
 acheicor:
-		ld		c,1
+        ld      c,1
 codesp:
-		ld		a,e
-		add		a,b
-		ld		e,a
-		ret		nc
-		inc		d
-		ret
+        ld      a,e
+        add     a,b
+        ld      e,a
+        ret     nc
+        inc     d
+        ret
 tstfimle:
-		inc		b
-		dec		b
-		ret		z
-		ld		a,' '
-		jr		preenche
+        inc     b
+        dec     b
+        ret     z
+        ld      a,' '
+        jr      preenche
 subscor:
-		ld		a,'?'
+        ld      a,'?'
 preenche:
-		ld		(de),a
-		inc		de
-		djnz	preenche
-		ret
+        ld      (de),a
+        inc     de
+        djnz    preenche
+        ret
 pulaesp:
-		ld		a,(hl)
-		inc		hl
-		call	testaesp
-		jr		z,pulaesp
-		dec		hl
-		ret
+        ld      a,(hl)
+        inc     hl
+        call    testaesp
+        jr      z,pulaesp
+        dec     hl
+        ret
 testacar:
-		ld		a,(hl)
-		cp		'a'
-		jr		c,testacar_1
-		cp		$7b
-		jr		nc,testacar_1
-		sub		$20
-testacar_1:	
-		cp		':'
-		ret		z
-		cp		'.'
-		ret		z
-		cp		$22
-		ret		z
-		cp		'['
-		ret		z
-		cp		']'
-		ret		z
-		cp		'_'
-		ret		z
-		cp		'/'
-		ret		z
-		cp		'+'
-		ret		z
-		cp		'='
-		ret		z
-		cp		';'
-		ret		z
-		cp		','
-		ret		z
+        ld      a,(hl)
+        cp      'a'
+        jr      c,testacar_1
+        cp      $7b
+        jr      nc,testacar_1
+        sub     $20
+testacar_1: 
+        cp      ':'
+        ret     z
+        cp      '.'
+        ret     z
+        cp      $22
+        ret     z
+        cp      '['
+        ret     z
+        cp      ']'
+        ret     z
+        cp      '_'
+        ret     z
+        cp      '/'
+        ret     z
+        cp      '+'
+        ret     z
+        cp      '='
+        ret     z
+        cp      ';'
+        ret     z
+        cp      ','
+        ret     z
 testaesp:
-		cp		$09
-		ret		z
-		cp		' '
-		ret
+        cp      $09
+        ret     z
+        cp      ' '
+        ret
 
 resetfcb:
-		ex	  af,af'
-		exx
+        ex    af,af'
+        exx
         ld    hl,fcb
-		ld    (hl),0
+        ld    (hl),0
         ld    de,fcb+1
         ld    bc,$23
         ldir
-		ld    hl,fcb_fn
-		ld    (hl),' '
-		ld    de,fcb_fn+1
-		ld    bc,10
-		ldir
-		exx
-		ex	  af,af'
+        ld    hl,fcb_fn
+        ld    (hl),' '
+        ld    de,fcb_fn+1
+        ld    bc,10
+        ldir
+        exx
+        ex    af,af'
         ret
 
 ; ===============================================================
@@ -588,19 +518,14 @@ disable_w_prot:
         push    af
         ld      a, $AA
         ld      ($5555),a 
-        call    waitforwrite
-        ld      a, $55
-        ld      ($2AAA),a
-        call    waitforwrite
-        ld      a, $80
-        ld      ($5555),a 
-        call    waitforwrite
-        ld      a, $AA
-        ld      ($5555),a 
-        call    waitforwrite
         ld      a, $55
         ld      ($2AAA),a 
-        call    waitforwrite
+        ld      a, $80
+        ld      ($5555),a 
+        ld      a, $AA
+        ld      ($5555),a 
+        ld      a, $55
+        ld      ($2AAA),a 
         ld      a, $20
         ld      ($5555),a 
         pop     af
@@ -610,11 +535,9 @@ disable_w_prot:
 enable_w_prot:
         push    af
         ld      a, $AA
-        ld      ($5555),a
-        call    waitforwrite
+        ld      ($5555),a 
         ld      a, $55
-        ld      ($2AAA),a
-        call    waitforwrite
+        ld      ($2AAA),a 
         ld      a, $A0
         ld      ($5555),a 
         pop     af
@@ -624,7 +547,6 @@ enable_w_prot:
 search_eeprom:
         ld      a,$FF
         ld      (thisslt),a
-        ;call    disable_w_prot
 nextslot:
          di
          call    sigslot
@@ -637,28 +559,16 @@ nextslot:
          ld      a,(RAMAD1)
          ld      h,$40
          call    ENASLT
-         ;call    enable_w_prot
          ld      a,(thisslt)   ; return the slot where eeprom was found
          or      a
          ret 
 endofsearch:
-         ;call    enable_w_prot
          ld      a,(RAMAD1)
          ld      h,$40
          call    ENASLT
          ld      a,$FF
          scf
-         ret   
-
-checksignature:
-         ld     a,($4000)
-         cp     'A'
-         scf
-         ret    nz
-         ld     a,($4001)
-         cp     'B'
-         scf
-         ret
+         ret 
 
 testram:
         ld      hl,$4000
@@ -673,9 +583,10 @@ testram:
         ret 
 
 writeram:
+        ld      b,a
+        call    enable_w_prot
         ld      (hl),a
         call    waitforwrite
-        ld      b,a
         ld      a,(hl)
         inc     hl
         cp      b
@@ -685,7 +596,7 @@ writeram:
 
 waitforwrite:
         push    bc
-        ld      b,50
+        ld      b,255
 waitforwrite0:
         push    af
         push    bc

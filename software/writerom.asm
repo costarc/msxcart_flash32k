@@ -125,6 +125,8 @@ instcall:
         cp      $ff
         jr      z, fnotfounderr	
 		call    setdma
+        ld      hl,$4000
+        ld      (curraddr),hl
 writeeeprom:
         call    readfileregister	; read 1 block of data from disk
 		cp		2
@@ -134,31 +136,41 @@ writeeeprom:
 		or		l
 		jr		z,endofreading		; number of bytes read is zero, end.
 		push	de					; save error code because this might be
+        
+        ld      a,(thisslt)
+        ld      h,$40
+        call    ENASLT
+        call    write_enable
+
 									; the last record of the file. will test 
 									; at the end of this loop, below.
         ld      b,l     ; hl = number of bytes read from disk, but we are
 						; reading only 128 bytes at a time
 						; therefore fits in register b
         ld      hl,dma	; Area where the record was written
-
-         ;ld      a,(thisslt)
-         ;ld      h,$40
-         ;call    ENASLT
-         ;call    write_enable
 writeeeprom0:
         ld      a,(hl)
-		push	bc
-		push	hl
-        call    PUTCHAR
-		pop		hl
-		pop		bc
+        ld      de,(curraddr)
+        ld      (de),a
+        inc     de
+        ld      (curraddr),de
         inc     hl
+        push    hl
+        push    bc
+        call    PUTCHAR
+        call    waitforwrite
+        pop     bc
+        pop     hl
 		djnz	writeeeprom0
 		pop 	af				; retrieve the error code
 		cp		1				; 1 = this was last record.
-		jr		z,endofreading		
+		jr		z,endofreading
         jr      writeeeprom
 endofreading:
+        ld      a,$FF
+        ld      h,$40
+        call    ENASLT
+        call    write_disable
         ld      hl,txt_endoffile
         call    print
 		ret
@@ -666,7 +678,8 @@ writeram:
         ret
 
 waitforwrite:
-        ld      b,255
+        push    bc
+        ld      b,50
 waitforwrite0:
         push    af
         push    bc
@@ -677,6 +690,7 @@ waitforwrite0:
         pop     bc
         pop     af
         djnz    waitforwrite0
+        pop     bc
         ret
 
 writeeprom:
@@ -745,7 +759,7 @@ txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
 
 thisslt: db $FF
-
+curraddr: dw $0000
 
 fcb:
 ; reference: https://www.msx.org/wiki/FCB    

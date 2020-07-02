@@ -127,7 +127,13 @@ instcall:
 		call    setdma
         ld      hl,$4000
         ld      (curraddr),hl
+        ;call    disable_w_prot
+        ld      a,(thisslt)
+        ld      h,$40
+        call    ENASLT
 writeeeprom:
+        ld      a,'.'
+        call    PUTCHAR
         call    readfileregister	; read 1 block of data from disk
 		cp		2
 		jr		nc,filereaderr		; some error
@@ -136,18 +142,14 @@ writeeeprom:
 		or		l
 		jr		z,endofreading		; number of bytes read is zero, end.
 		push	de					; save error code because this might be
-        
-        ld      a,(thisslt)
-        ld      h,$40
-        call    ENASLT
-        call    write_enable
+                                    ; the last record of the file. will test 
+                                    ; at the end of this loop, below.        
 
-									; the last record of the file. will test 
-									; at the end of this loop, below.
         ld      b,l     ; hl = number of bytes read from disk, but we are
 						; reading only 128 bytes at a time
 						; therefore fits in register b
         ld      hl,dma	; Area where the record was written
+        di
 writeeeprom0:
         ld      a,(hl)
         ld      de,(curraddr)
@@ -155,24 +157,20 @@ writeeeprom0:
         inc     de
         ld      (curraddr),de
         inc     hl
-        push    hl
-        push    bc
-        call    PUTCHAR
         call    waitforwrite
-        pop     bc
-        pop     hl
 		djnz	writeeeprom0
 		pop 	af				; retrieve the error code
 		cp		1				; 1 = this was last record.
 		jr		z,endofreading
         jr      writeeeprom
 endofreading:
-        ld      a,$FF
+        ld      a,(RAMAD1)
         ld      h,$40
         call    ENASLT
-        call    write_disable
+        ;call    enable_w_prot
         ld      hl,txt_endoffile
         call    print
+        ei
 		ret
 
 ; this is where the program ends		
@@ -586,30 +584,37 @@ resetfcb:
 ; Atmel AT28C256 Programming code
 ; ===============================================================
 ; Disable write-protection
-write_disable:
+disable_w_prot:
         push    af
         ld      a, $AA
         ld      ($5555),a 
+        call    waitforwrite
         ld      a, $55
-        ld      ($2AAA),a 
+        ld      ($2AAA),a
+        call    waitforwrite
         ld      a, $80
         ld      ($5555),a 
+        call    waitforwrite
         ld      a, $AA
         ld      ($5555),a 
+        call    waitforwrite
         ld      a, $55
         ld      ($2AAA),a 
+        call    waitforwrite
         ld      a, $20
         ld      ($5555),a 
         pop     af
         ret
 
 ; Enable write-protection
-write_enable:
+enable_w_prot:
         push    af
         ld      a, $AA
-        ld      ($5555),a 
+        ld      ($5555),a
+        call    waitforwrite
         ld      a, $55
-        ld      ($2AAA),a 
+        ld      ($2AAA),a
+        call    waitforwrite
         ld      a, $A0
         ld      ($5555),a 
         pop     af
@@ -619,6 +624,7 @@ write_enable:
 search_eeprom:
         ld      a,$FF
         ld      (thisslt),a
+        ;call    disable_w_prot
 nextslot:
          di
          call    sigslot
@@ -626,18 +632,18 @@ nextslot:
          jr      z,endofsearch
          ld      h,$40
          call    ENASLT
-         call    write_enable
          call    testram
-         call    write_disable
          jr      c,nextslot
-         ld      a,(RAMAD2)
+         ld      a,(RAMAD1)
          ld      h,$40
          call    ENASLT
+         ;call    enable_w_prot
          ld      a,(thisslt)   ; return the slot where eeprom was found
          or      a
          ret 
 endofsearch:
-         ld      a,(RAMAD2)
+         ;call    enable_w_prot
+         ld      a,(RAMAD1)
          ld      h,$40
          call    ENASLT
          ld      a,$FF

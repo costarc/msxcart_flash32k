@@ -17,7 +17,7 @@ I choose to leave the call to the SDP routines in place, as it is not causing
 any harm, or noticeable delays in the writting process for these small 32K eeproms.
 In case anyone comes through this code, and make the SDP work, please get in touch.
 
-How to write and protect the eeprom against undesirable writes:
+How to operate and write protect the eeprom against undesirable writes:
 
 1. Put jumper /wr in the interface
 2. Plug the interface on the MSX and switch it on

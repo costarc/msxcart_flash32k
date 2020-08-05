@@ -374,5 +374,31 @@ Wire Wire Line
 Text GLabel 5950 5050 2    50   Input ~ 0
 mem_ce
 Text Notes 10600 7650 0    50   ~ 0
-2
+3
+Text GLabel 5950 5700 2    50   Input ~ 0
+mem_oe
+$Comp
+L Device:R_US R3
+U 1 1 5F2B2133
+P 5750 5550
+F 0 "R3" H 5818 5596 50  0000 L CNN
+F 1 "10K" H 5818 5505 50  0000 L CNN
+F 2 "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal" V 5790 5540 50  0001 C CNN
+F 3 "~" H 5750 5550 50  0001 C CNN
+	1    5750 5550
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:+5V #PWR07
+U 1 1 5F2B2756
+P 5750 5400
+F 0 "#PWR07" H 5750 5250 50  0001 C CNN
+F 1 "+5V" H 5765 5573 50  0000 C CNN
+F 2 "" H 5750 5400 50  0001 C CNN
+F 3 "" H 5750 5400 50  0001 C CNN
+	1    5750 5400
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5750 5700 5950 5700
 $EndSCHEMATC

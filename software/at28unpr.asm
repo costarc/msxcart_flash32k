@@ -30,23 +30,21 @@
 ;|===========================================================================|
 ;
 ; Compile this file with z80asm:
-;  z80asm at28c256.asm -o at28c256.com
+;  z80asm writerom.asm at28c256.asm -o at28c256.com
 ; 
 ; File history :
 ; 1.0  - 27/06/2020 : initial version
 ;        05/08/2020 : Revised version
 ;
 ; Note on this code:
-; Due to some technical problems to enable/disable the EEPROM Software Data 
-; Protecion (SDP), this code only works if the SDP is previously disabled.
-; Make sure the EEPROM SDP has not been enabled by other means, as for example,
-; using an external EPROM programmer.
-;
-; Before writing a ROM to the EEPROM, use the "at28unpr.com <slot number>"
-; to disable the SDP.
-;
-; After writing the ROM to the EEPROM, use the "at28prot.com <slot number>"
-; to protect the EEPROM against writes when MSX boots.
+; The AT28C256 seems to have too fast writting times for the MSX.
+; Even though it can be writtem correctly by this software,
+; the SDP (software data protection) is not working.
+; My guess is that the cycle times for the protocol is too fast for the MSX
+; (it is aroudn nanosecods).
+; I choose to leave the call to the SDP routines in place, as it is not causing
+; any harm, or noticeable delays in the writting process for these small 32K eeproms.
+; In case anyone comes through this code, and make the SDP work, please get in touch.
 ;
 ; How to write and protect the eeprom against undesireable writes:
 ; 
@@ -114,127 +112,47 @@ RAMAD3:         EQU     $F344             ; slotid DOS ram page 3
     
         ld      hl,txt_credits
         call    print
-        ld      hl,txt_ramsearch
-        call    print
-        call    search_eeprom
-; Reenable interrupts that was disabled by RDSLT
-        ei
-; if could not find the cartridge, exit with error message
-        ld      hl,txt_ramnotfound
-        jp      c,print
-; Found writable memory therefore can continue writing the ROM into the eeprom
-instcall:
+
+        call    readparms
+        jr      nc,start        ; received slot numnber from cli
+
+        ld      hl,txt_sdp
+        jp      print
+
+start:
         push    af
-        ld      hl,txt_ramfound
+        ld      hl,txt_unprotecting
         call    print
         pop     af
-        push    af
-        call    PRINTNUMBER
-        call    PRINTNEWLINE
-        ld      hl,txt_ffound
-        call    print
-        pop     af  ; slot with ram is in (thisslt)
-; read filename passed with DOS command line
-; and update fcb with filename
-        call    resetfcb
-        call    readcliparms
-        call    openfile
-        cp      $ff
-        jr      z, fnotfounderr 
-        call    setdma
-        ld      a,(thisslt)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(thisslt)
-        ld      h,$80
-        call    ENASLT
-        ld      de,$4000
-        ld      (curraddr),de
-writeeeprom:
-        ld      a,'.'
-        call    PUTCHAR
-        call    readfileregister    ; read 1 block of data from disk
-        cp      2
-        jr      nc,filereaderr      ; some error
-        ld      d,a                 ; save error in D for a while
-        ld      a,h
-        or      l
-        jr      z,endofreading      ; number of bytes read is zero, end.
-        push    de                  ; save error code because this might be
-                                    ; the last record of the file. will test 
-                                    ; at the end of this loop, below.
-        ld      b,l     ; hl = number of bytes read from disk, but we are
-                        ; reading only 64 bytes at a time
-                        ; therefore fits in register b
-        ld      hl,dma  ; Area where the record was written
-        di
-
-writeeeprom0:
-        ld      a,(hl)
-        push    bc
-        push    hl
-        call    writebyte
-        pop     hl
-        pop     bc
-        inc     hl
-        djnz    writeeeprom0
-        pop     af              ; retrieve the error code
-        cp      1               ; 1 = this was last record.
-        jr      z,endofreading   
-        jr      writeeeprom
-endofreading:
-        ld      a,(RAMAD1)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(RAMAD2)
-        ld      h,$80
-        call    ENASLT
-        ld      hl,txt_advice
-        call    print
-        ei
+        call    disable_w_prot
         ret
 
-fnotfounderr:
-        ld     hl,txt_fnotfound
-        call   print
-        ret
+; get slot number from CLI
+readparms:
+       ld      a,($80)
+       or      a
+       scf
+       ret     z  ; no parameters passed
+       cp      3
+       jr      z,readparms1
+       scf
+       ret                 ; parameter must be space + 2 digit
+readparms1:
+       ld      a,($82)
+       sub     $30
+       sla     a
+       sla     a
+       sla     a
+       sla     a
+       ld      b,a
 
-writebyte:
-        ld      de,(curraddr)
-        ld      (de),a
-        inc     de
-        ld      (curraddr),de   ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
-        ret
-       
-openfile:
-        ld     c,$0f
-        ld     de,fcb
-        call   BDOS
-        ret 
-
-filereaderr:
-        ld     hl,txt_err_reading
-        call   print
-        ret
-        
-readfileregister:
-        ld     hl,numregtoread  ; read 128 bytes at a time (register is set to size 1 in fcb)
-        ld     c,$27
-        ld     de,fcb
-        call   BDOS
-        ret
-
-setdma:
-        ld      de,dma
-        ld      c,$1a
-        call    BDOS
-        ld      hl,regsize      ;tamanho dos registros
-        ld      (fcb+14),hl
-        dec     hl
-        ld      (fcb+32),hl
-        ld      (fcb+34),hl
-        ld      (fcb+36),hl
-        ret
+       ld      a,($83)
+       sub     $30
+       or      b
+       ld      (thisslt),a
+       scf
+       ccf
+       ret
 
 ;-----------------------
 ; PRINT                |
@@ -306,163 +224,6 @@ PUTCHAR:
         pop     hl
         pop     de
         pop     bc
-        ret
-
-PRINTNEWLINE:
-       push     hl
-       ld       hl,txt_newline
-       call     print
-       pop      hl
-       ret
-
-; ===============================================================
-; Get parameters from DOS CLI and parse to get file parameters
-; I extracted this part from an old MSX Book I have.
-; ===============================================================
-readcliparms:
-        ld      de,fcb
-        xor     a
-        ld      (de),a
-        ld      hl,dma+1
-        call    pulaesp
-        call    testacar
-        ld      c,a
-        inc     hl
-        ld      a,(hl)
-        dec     hl
-        cp      ':'
-        ld      a,c
-        jr      nz,lenome_ext
-        inc     hl
-        inc     hl
-; CLI paramaters contain drive specification
-; 0 = current
-; 1 = drive A
-; 2 = drive B and so on.
-        sub     $41
-        jr      c,espinval
-        inc     a
-        ld      (de),a
-        jr      lenome_ext
-espinval:
-        ld      a,$ff       ; invalid drive to force bdos to return error
-        ld      (de),a
-lenome_ext:
-        inc     de
-        ld      c,0
-        ld      b,8
-        call    lenome
-        ld      a,(hl)
-        cp      '.'
-        jr      nz,fimnome_ext
-        inc     hl
-        ld      b,3
-        call    lenome_0
-fimnome_ext:
-        ld      a,c
-        ret
-lenome:
-        call    testacar
-        jr      c,codesp
-        jr      z,codesp
-lenome_0:
-        call    testacar
-        jr      c,tstfimle
-        jr      z,tstfimle
-        inc     hl
-        inc     b
-        dec     b
-        jr      z,lenome_0
-        cp      '*'
-        jr      z,coringa
-        ld      (de),a
-        inc     de
-        dec     b
-        cp      '?'
-        jr      z,acheicor
-        jr      lenome_0
-coringa:
-        call    subscor
-acheicor:
-        ld      c,1
-codesp:
-        ld      a,e
-        add     a,b
-        ld      e,a
-        ret     nc
-        inc     d
-        ret
-tstfimle:
-        inc     b
-        dec     b
-        ret     z
-        ld      a,' '
-        jr      preenche
-subscor:
-        ld      a,'?'
-preenche:
-        ld      (de),a
-        inc     de
-        djnz    preenche
-        ret
-pulaesp:
-        ld      a,(hl)
-        inc     hl
-        call    testaesp
-        jr      z,pulaesp
-        dec     hl
-        ret
-testacar:
-        ld      a,(hl)
-        cp      'a'
-        jr      c,testacar_1
-        cp      $7b
-        jr      nc,testacar_1
-        sub     $20
-testacar_1: 
-        cp      ':'
-        ret     z
-        cp      '.'
-        ret     z
-        cp      $22
-        ret     z
-        cp      '['
-        ret     z
-        cp      ']'
-        ret     z
-        cp      '_'
-        ret     z
-        cp      '/'
-        ret     z
-        cp      '+'
-        ret     z
-        cp      '='
-        ret     z
-        cp      ';'
-        ret     z
-        cp      ','
-        ret     z
-testaesp:
-        cp      $09
-        ret     z
-        cp      ' '
-        ret
-
-resetfcb:
-        ex    af,af'
-        exx
-        ld    hl,fcb
-        ld    (hl),0
-        ld    de,fcb+1
-        ld    bc,$23
-        ldir
-        ld    hl,fcb_fn
-        ld    (hl),' '
-        ld    de,fcb_fn+1
-        ld    bc,10
-        ldir
-        exx
-        ex    af,af'
         ret
 
 ; Search for the EEPROM
@@ -592,20 +353,30 @@ sigslot:
 ; Disable write-protection
 disable_w_prot:
         push    af
-        ld      a, $AA
+        ld      h,$40
+        call    ENASLT
+        pop     af
+        ld      h,$80
+        call    ENASLT
+        ld      a,$AA
         ld      ($9555),a 
-        ld      a, $55
+        ld      a,$55
         ld      ($6AAA),a 
-        ld      a, $80
+        ld      a,$80
         ld      ($9555),a 
-        ld      a, $AA
+        ld      a,$AA
         ld      ($9555),a 
-        ld      a, $55
+        ld      a,$55
         ld      ($6AAA),a 
-        ld      a, $20
+        ld      a,$20
         ld      ($9555),a
         call    waitforwrite
-        pop     af
+        ld      a,(RAMAD1)
+        ld      h,$40
+        call    ENASLT
+        ld      a,(RAMAD2)
+        ld      h,$80
+        call    ENASLT
         ret
 
 ; Enable write-protection
@@ -655,10 +426,10 @@ erase_chip:
         ret
 ; ==============================================================
 
-txt_ramsearch:   db      "Searching for EEPROM",13,10,0
-txt_ramfound:   db      "Found writable memory in slot ",0
+txt_ramsearch:   db      "Search for EEPROM",13,10,0
+txt_ramfound:   db      "Found RAM in slot ",0
 txt_newline:    db      13,10,0
-txt_ramnotfound:   db      "EEPROM not found",13,10,0
+txt_ramnotfound:   db      "ram not found",13,10,0
 txt_writingflash:   db      "Writing to EEPROM on slot ",0
 txt_completed: db      "Completed.",13,10,0
 txt_nofn:         db "Filename is empty or not valid",13,10,0
@@ -667,11 +438,11 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
+txt_credits: db "AT28C256 EEPROM Software Data Protection for MSX",13,10
              db "(c) Ronivon Costa, 2020",13,10,13,10,0
 txt_invalidparms: db "Invalid parameters",13,10
                   db "Must pass a slot number using two digits, for example:",13,10
-                  db "at28c256 02 game.rom",13,10,0
+                  db "at28c256 01",13,10,0
 txt_advice: db 13,10
             db "Write process completed",13,10
             db "==> ATTENTION <==",13,10
@@ -680,8 +451,8 @@ txt_advice: db 13,10
 txt_sdp:    db "To force disabling the AT28C256 Software Data Protction (SDP),",13,10
             db "call this program passing the slot as parameter.",13,10
             db "Must specify two digits for the slot, as for example:",13,10
-            db "at28csdp 01",13,10,13,10
-            db "Afterwards, you can use verrom.com to verify if the SDP was correctly disable.",13,10,0
+            db "at28unpr 01",13,10,13,10,0
+txt_unprotecting: db "Disabling AT28C256 Software Data Protection...",13,10,0
 
 thisslt: db $FF
 curraddr: dw $0000

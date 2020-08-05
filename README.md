@@ -8,14 +8,16 @@ The schematic is a design to allow writing and reading the AT28C256 EEPROM
 
 Note on the code to write the EEPROM:
 
-The AT28C256 seems to have too fast writting times for the MSX.
-Even though it can be writtem correctly by this software,
-the SDP (software data protection) is not working.
-My guess is that the cycle times for the protocol is too fast for the MSX
-(it is aroudn nanosecods).
-I choose to leave the call to the SDP routines in place, as it is not causing
-any harm, or noticeable delays in the writting process for these small 32K eeproms.
-In case anyone comes through this code, and make the SDP work, please get in touch.
+Due to some technical problems to enable/disable the EEPROM Software Data 
+Protecion (SDP), this code only works if the SDP is previously disabled.
+Make sure the EEPROM SDP has not been enabled by other means, as for example,
+using an external EPROM programmer.
+
+Before writing a ROM to the EEPROM, use the "at28unpr.com <slot number>"
+to disable the SDP.
+
+After writing the ROM to the EEPROM, use the "at28prot.com <slot number>"
+to protect the EEPROM against writes when MSX boots.
 
 How to operate and write protect the eeprom against undesirable writes:
 
@@ -25,3 +27,4 @@ How to operate and write protect the eeprom against undesirable writes:
 4. Switch off MSX and remove the interface
 5. Remove the /wr Jumper
 6. Plug the interface on the MSX and switch it on. Will boot into the game.
+

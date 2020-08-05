@@ -168,7 +168,7 @@ writeeeprom:
                         ; therefore fits in register b
         ld      hl,dma  ; Area where the record was written
         di
-        ;call    enable_w_prot   ;will send protection command, that allow written once to the EEPROM
+
 writeeeprom0:
         ld      a,(hl)
         push    bc
@@ -189,9 +189,8 @@ endofreading:
         ld      a,(RAMAD2)
         ld      h,$80
         call    ENASLT
-        ld      hl,txt_endoffile
+        ld      hl,txt_advice
         call    print
-        call    enable_w_prot_final
         ei
         ret
 
@@ -502,7 +501,6 @@ testram:
 
 write_test:
         ld      b,a
-        call    enable_w_prot
         ld      (hl),a
         call    waitforwrite
         ld      a,(hl)
@@ -528,29 +526,6 @@ waitforwrite0:
         ld      a,b
         or      c
         jr      nz,waitforwrite0
-        pop     bc
-        ret
-
-write_eeprom:
-        ld      b,a
-        ;call    enable_w_prot
-        ld      (hl),a           ; write the byte to the eeprom
-        ;call    waitforwrite
-write_eeprom_check:
-        ld      a,(hl)           ; read the byte back
-        cp      b                ; verify if it matches what was written
-        jr      nz,write_eeprom_check  ; loops waiting the eeprom finishing the write
-        inc     hl                     ; check the datasheet if in doubt why this loop is here
-        ret
-
-delay_cmd:
-        push    bc
-        ld      bc,$0000
-delay_cmd0:
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,delay_cmd
         pop     bc
         ret
 
@@ -607,7 +582,7 @@ sigslot:
 ; There SDP (software data protection) available in the eeprom.
 ; However, I could not make it work on the MSX despite many efforts.
 ; I believe the MSX is too slow to cope with the eeprom timing reqs.
-; I leave the coee here for information and documentation purposes.
+; I leave the code here for information and documentation purposes.
 ; ==================================================================
 ; Disable write-protection
 disable_w_prot:
@@ -689,7 +664,11 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-
+txt_advice: db 13,10
+            db "Write process completed",13,10
+            db "==> ATTENTION <==",13,10
+            db "Switch off the MSX immediately, remove the interface, then remove the /wr jumper"
+            db 13,10,0
 thisslt: db $FF
 curraddr: dw $0000
 

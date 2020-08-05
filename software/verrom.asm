@@ -280,6 +280,8 @@ search_eeprom:
         ld      a,$FF
         ld      (thisslt),a
 nextslot:
+         ld      a,'.'
+         call    PUTCHAR
          di
          call    sigslot
          cp      $FF
@@ -391,13 +393,18 @@ enable_w_prot:
         ret
 
 showcontent:
+        ld      a,(thisslt)
+        call    PRINTNUMBER
+        call    PRINTNEWLINE
         ld      hl,$4000
         ld      b,0
 showcontent0:
         ld      a,(hl)
         call    PRINTNUMBER
         ld      a,' '
+        push    bc
         call    PUTCHAR
+        pop     bc
         inc     hl
         djnz    showcontent0
         call    PRINTNEWLINE

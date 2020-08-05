@@ -1,6 +1,6 @@
 ;|===========================================================================|
 ;|                                                                           |
-;| MSXPi Cartridge 32K EEPROM                                                |
+;| MSX Software for Cartridge AT28C256 32K EEPROM                            |
 ;|                                                                           |
 ;| Version : 1.0                                                             |
 ;|                                                                           |
@@ -29,9 +29,32 @@
 ;| along with MSX PI Interface.  If not, see <http://www.gnu.org/licenses/>. |
 ;|===========================================================================|
 ;
+; Compile this file with z80asm:
+;  z80asm writerom.asm at28c256.asm -o at28c256.com
+; 
 ; File history :
 ; 1.0  - 27/06/2020 : initial version
-;        05/08/2020 : Revised versoin
+;        05/08/2020 : Revised version
+;
+; Note on this code:
+; The AT28C256 seems to have too fast writting times for the MSX.
+; Even though it can be writtem correctly by this software,
+; the SDP (software data protection) is not working.
+; My guess is that the cycle times for the protocol is too fast for the MSX
+; (it is aroudn nanosecods).
+; I choose to leave the call to the SDP routines in place, as it is not causing
+; any harm, or noticeable delays in the writting process for these small 32K eeproms.
+; In case anyone comes through this code, and make the SDP work, please get in touch.
+;
+; How to write and protect the eeprom against undesireable writes:
+; 
+; 1. Put jumper /wr in the interface
+; 2. Plug the interface on the MSX and switch it on
+; 3. Write the ROM to the EEPROM, for example: "at28c256 galaga.rom"
+; 4. Switch off MSX and remove the interface
+; 5. Remove the /wr Jumper
+; 6. Plug the interface on the MSX and switch it on. Will boot into the game.
+; ====================================================================================
 
 dma:            equ     $80
 regsize:        equ     1
@@ -87,27 +110,22 @@ RAMAD3:         EQU     $F344             ; slotid DOS ram page 3
 
         org     $100
     
-        call    readparms
-        jr      nc,showcart        ; received slot numnber from cli
-
-        ld      hl,txt_ramsearch
+        ld      hl,txt_credits
         call    print
-        call    search_cart
-        ld      hl,txt_ramnotfound
-        ld      a,(thisslt)
-        cp      $ff
-        call    z,print
-        ret
 
-showcart:
-         ld      a,(thisslt)
-         ld      h,$40
-         call    ENASLT
-         call    showcontent
-         ld      a,(RAMAD1)
-         ld      h,$40
-         call    ENASLT
-         ret
+        call    readparms
+        jr      nc,start        ; received slot numnber from cli
+
+        ld      hl,txt_sdp
+        jp      print
+
+start:
+        push    af
+        ld      hl,txt_protecting
+        call    print
+        pop     af
+        call    enable_w_prot
+        ret
 
 ; get slot number from CLI
 readparms:
@@ -117,8 +135,6 @@ readparms:
        ret     z  ; no parameters passed
        cp      3
        jr      z,readparms1
-       ld      hl,txt_invalidparms
-       call    print
        scf
        ret                 ; parameter must be space + 2 digit
 readparms1:
@@ -137,109 +153,6 @@ readparms1:
        scf
        ccf
        ret
-
-; Search for the EEPROM
-search_cart:
-        ld      a,$FF
-        ld      (thisslt),a
-nextslot:
-         ld      a,'.'
-         call    PUTCHAR
-         di
-         call    sigslot
-         cp      $FF
-         jr      z,endofsearch
-         ld      h,$40
-         call    ENASLT
-         call    test_cart
-         jr      c,nextslot
-         call    showcontent
-         jr      nextslot
-
-endofsearch:
-         ld      a,(RAMAD1)
-         ld      h,$40
-         call    ENASLT
-         ld      a,$FF
-         scf
-         ret
-
-test_cart:
-        ld      a,($4000)
-        cp      'A'
-        scf
-        ret     nz
-        ld      a,($4001)
-        cp      'B'
-        ret     Z
-        SCF
-        ret
-
-showcontent:
-        ld      a,(thisslt)
-        call    PRINTNUMBER
-        call    PRINTNEWLINE
-        ld      hl,$4000
-        ld      b,0
-showcontent0:
-        ld      a,(hl)
-        call    PRINTNUMBER
-        ld      a,' '
-        push    bc
-        call    PUTCHAR
-        pop     bc
-        inc     hl
-        djnz    showcontent0
-        call    PRINTNEWLINE
-        ret
-
-; -------------------------------------------------------
-; SIGSLOT
-; Returns in A the next slot every time it is called.
-; For initializing purposes, thisslt has to be #FF.
-; If no more slots, it returns A=#FF.
-; this code is programmed by Nestor Soriano aka Konamiman
-; --------------------------------------------------------
-sigslot:
-    ld      a, (thisslt)                ; Returns the next slot, starting by
-    cp      $FF                         ; slot 0. Returns #FF when there are not more slots
-    jr      nz, .p1                     ; Modifies AF, BC, HL.
-    ld      a, (EXPTBL)
-    and     %10000000
-    ld      (thisslt), a
-    ret
-.p1:
-    ld      a, (thisslt)
-    cp      %10001111
-    jr      z, .nomaslt
-    cp      %00000011
-    jr      z, .nomaslt
-    bit     7, a
-    jr      nz, .sltexp
-.p2:
-    and     %00000011
-    inc     a
-    ld      c, a
-    ld      b, 0
-    ld      hl, EXPTBL
-    add     hl, bc
-    ld      a, (hl)
-    and     %10000000
-    or      c
-    ld      (thisslt), a
-    ret
-.sltexp:
-    ld      c, a
-    and     %00001100
-    cp      %00001100
-    ld      a, c
-    jr      z, .p2
-    add     a, %00000100
-    ld      (thisslt), a
-    ret
-.nomaslt:
-    ld      a, $FF
-    ret
 
 ;-----------------------
 ; PRINT                |
@@ -313,12 +226,56 @@ PUTCHAR:
         pop     bc
         ret
 
-PRINTNEWLINE:
-       push     hl
-       ld       hl,txt_newline
-       call     print
-       pop      hl
-       ret
+waitforwrite:
+        push    bc
+        ld      bc,300
+waitforwrite0:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,waitforwrite0
+        pop     bc
+        ret
+
+; ==================================================================
+; Atmel AT28C256 Programming code
+; There SDP (software data protection) available in the eeprom.
+; However, I could not make it work on the MSX despite many efforts.
+; I believe the MSX is too slow to cope with the eeprom timing reqs.
+; I leave the code here for information and documentation purposes.
+; ==================================================================
+; Enable write-protection
+enable_w_prot:
+        push    af
+        ld      h,$40
+        call    ENASLT
+        pop     af
+        ld      h,$80
+        call    ENASLT
+        ld      a, $AA
+        ld      ($9555),a     ; 0x5555 + 0x4000
+        ld      a, $55
+        ld      ($6AAA),a     ; 0x2AAA + 0x4000
+        ld      a, $A0
+        ld      ($9555),a     ; 0x5555 + 0x4000
+        call    waitforwrite
+        ld      a,(RAMAD1)
+        ld      h,$40
+        call    ENASLT
+        ld      a,(RAMAD2)
+        ld      h,$80
+        call    ENASLT
+        ret
+
+; ==============================================================
 
 txt_ramsearch:   db      "Search for EEPROM",13,10,0
 txt_ramfound:   db      "Found RAM in slot ",0
@@ -332,21 +289,21 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
+txt_credits: db "AT28C256 EEPROM Software Data Protection Enabler for MSX",13,10
              db "(c) Ronivon Costa, 2020",13,10,13,10,0
 txt_invalidparms: db "Invalid parameters",13,10
                   db "Must pass a slot number using two digits, for example:",13,10
-                  db "at28c256 02 game.rom",13,10,0
+                  db "at28c256 01",13,10,0
 txt_advice: db 13,10
             db "Write process completed",13,10
             db "==> ATTENTION <==",13,10
             db "Switch off the MSX immediately, remove the interface, then remove the /wr jumper"
             db 13,10,0
-txt_sdp:    db "To force disabling the AT28C256 Software Data Protction (SDP),",13,10
+txt_sdp:    db "To force Enabling the AT28C256 Software Data Protction (SDP),",13,10
             db "call this program passing the slot as parameter.",13,10
             db "Must specify two digits for the slot, as for example:",13,10
-            db "at28csdp 01",13,10,13,10
-            db "Afterwards, you can use verrom.com to verify if the SDP was correctly disable.",13,10,0
+            db "at28prot 01",13,10,13,10,0
+txt_protecting: db "Enabling AT28C256 Software Data Protection...",13,10,0
 
 thisslt: db $FF
 curraddr: dw $0000

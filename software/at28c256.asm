@@ -1,6 +1,6 @@
 ;|===========================================================================|
 ;|                                                                           |
-;| MSXPi Cartridge 32K EEPROM                                                |
+;| MSX Software for Cartridge AT28C256 32K EEPROM                            |
 ;|                                                                           |
 ;| Version : 1.0                                                             |
 ;|                                                                           |
@@ -37,14 +37,16 @@
 ;        05/08/2020 : Revised version
 ;
 ; Note on this code:
-; The AT28C256 seems to have too fast writting times for the MSX.
-; Even though it can be writtem correctly by this software,
-; the SDP (software data protection) is not working.
-; My guess is that the cycle times for the protocol is too fast for the MSX
-; (it is aroudn nanosecods).
-; I choose to leave the call to the SDP routines in place, as it is not causing
-; any harm, or noticeable delays in the writting process for these small 32K eeproms.
-; In case anyone comes through this code, and make the SDP work, please get in touch.
+; Due to some technical problems to enable/disable the EEPROM Software Data 
+; Protecion (SDP), this code only works if the SDP is previously disabled.
+; Make sure the EEPROM SDP has not been enabled by other means, as for example,
+; using an external EPROM programmer.
+;
+; Before writing a ROM to the EEPROM, use the "at28unpr.com <slot number>"
+; to disable the SDP.
+;
+; After writing the ROM to the EEPROM, use the "at28prot.com <slot number>"
+; to protect the EEPROM against writes when MSX boots.
 ;
 ; How to write and protect the eeprom against undesireable writes:
 ; 
@@ -128,8 +130,7 @@ instcall:
         pop     af
         push    af
         call    PRINTNUMBER
-        ld      hl,txt_newline
-        call    print
+        call    PRINTNEWLINE
         ld      hl,txt_ffound
         call    print
         pop     af  ; slot with ram is in (thisslt)
@@ -309,6 +310,13 @@ PUTCHAR:
         pop     de
         pop     bc
         ret
+
+PRINTNEWLINE:
+       push     hl
+       ld       hl,txt_newline
+       call     print
+       pop      hl
+       ret
 
 ; ===============================================================
 ; Get parameters from DOS CLI and parse to get file parameters
@@ -650,13 +658,11 @@ erase_chip:
         ret
 ; ==============================================================
 
-txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
-             db "(c) Ronivon Costa, 2020",13,10,13,10,0
-txt_ramsearch:   db      "Search for ram in $4000",13,10,0
-txt_ramfound:   db      "Found RAM in slot ",0
+txt_ramsearch:   db      "Searching for EEPROM",13,10,0
+txt_ramfound:   db      "Found writable memory in slot ",0
 txt_newline:    db      13,10,0
-txt_ramnotfound:   db      "ram not found",13,10,0
-txt_writingflash:   db      "Writing to EEPROM...",13,10,0
+txt_ramnotfound:   db      "EEPROM not found",13,10,0
+txt_writingflash:   db      "Writing to EEPROM on slot ",0
 txt_completed: db      "Completed.",13,10,0
 txt_nofn:         db "Filename is empty or not valid",13,10,0
 txt_fileopenerr:  db "Error opening file",13,10,0
@@ -664,11 +670,22 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
+txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
+             db "(c) Ronivon Costa, 2020",13,10,13,10,0
+txt_invalidparms: db "Invalid parameters",13,10
+                  db "Must pass a slot number using two digits, for example:",13,10
+                  db "at28c256 02 game.rom",13,10,0
 txt_advice: db 13,10
             db "Write process completed",13,10
             db "==> ATTENTION <==",13,10
             db "Switch off the MSX immediately, remove the interface, then remove the /wr jumper"
             db 13,10,0
+txt_sdp:    db "To force disabling the AT28C256 Software Data Protction (SDP),",13,10
+            db "call this program passing the slot as parameter.",13,10
+            db "Must specify two digits for the slot, as for example:",13,10
+            db "at28csdp 01",13,10,13,10
+            db "Afterwards, you can use verrom.com to verify if the SDP was correctly disable.",13,10,0
+
 thisslt: db $FF
 curraddr: dw $0000
 

@@ -30,7 +30,7 @@
 ;|===========================================================================|
 ;
 ; Compile this file with z80asm:
-;  z80asm writerom.asm at28c256.asm -o at28c256.com
+;  z80asm at28c256.asm -o at28c256.com
 ; 
 ; File history :
 ; 1.0  - 27/06/2020 : initial version
@@ -147,7 +147,6 @@ instcall:
         ld      a,(thisslt)
         ld      h,$80
         call    ENASLT
-        ;call    erase_chip
         ld      de,$4000
         ld      (curraddr),de
 writeeeprom:
@@ -205,9 +204,7 @@ writebyte:
         inc     de
         ld      (curraddr),de   ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
         ret
-
-; this is where the program ends        
-
+       
 openfile:
         ld     c,$0f
         ld     de,fcb

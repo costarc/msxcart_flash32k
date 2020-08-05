@@ -88,21 +88,19 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
 
         org     $100
     
-        ld      hl,txt_eraseflash
+        ld      hl,txt_writingflash
         call    print
 
-        call    at28c_erase
-
-        ret
+        ;call    at28c_erase
 
         ld      a,1
         ld      hl,$4000
         ld      e,$43
-        call    at28cwrite
+        call    at28cwrite2
         ld      a,1
         ld      hl,$4001
         ld      e,$44
-        call    at28cwrite          
+        call    at28cwrite2      
         ret
 
         ;call    disable_w_prot
@@ -792,7 +790,6 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-txt_eraseflash:   db      "Erasing EEPROM...",13,10,0
 
 thisslt: db $FF
 curraddr: dw $0000

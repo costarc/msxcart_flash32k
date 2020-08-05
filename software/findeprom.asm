@@ -93,218 +93,11 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
         call    search_eeprom
         ld      hl,txt_ramnotfound
         jp      c,print
-
-; Found writable memory therefore can continue writing the ROM into the eeprom
-
-        push    af
         ld      hl,txt_ramfound
         call    print
-        pop     af
         call    PRINTNUMBER
         ld      hl,txt_newline
         call    print
-        ld      hl,txt_ffound
-        call    print
-
-        ld      a,(thisslt)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(thisslt)
-        ld      h,$80
-        call    ENASLT
-        xor     a
-        ld      ($4010),a
-        ld      ($8010),a
-        ld      hl,$4000
-        call    print
-        ld      hl,$8000
-        call    print
-endofreading:
-        ld      a,(RAMAD1)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(RAMAD2)
-        ld      h,$80
-        call    ENASLT
-        ret
-
-openfile:
-        ld     c,$0f
-        ld     de,fcb
-        call   BDOS
-        ret 
-
-filereaderr:
-        ld     hl,txt_err_reading
-        call   print
-        ret
-        
-readfileregister:
-        ld     hl,numregtoread  ; read 128 bytes at a time (register is set to size 1 in fcb)
-        ld     c,$27
-        ld     de,fcb
-        call   BDOS
-        ret
-
-setdma:
-        ld      de,dma
-        ld      c,$1a
-        call    BDOS
-        ld      hl,regsize      ;tamanho dos registros
-        ld      (fcb+14),hl
-        dec     hl
-        ld      (fcb+32),hl
-        ld      (fcb+34),hl
-        ld      (fcb+36),hl
-        ret
-
-; ===============================================================
-; Get parameters from DOS CLI
-; ===============================================================
-readcliparms:
-        ld      de,fcb
-        xor     a
-        ld      (de),a
-        ld      hl,dma+1
-        call    pulaesp
-        call    testacar
-        ld      c,a
-        inc     hl
-        ld      a,(hl)
-        dec     hl
-        cp      ':'
-        ld      a,c
-        jr      nz,lenome_ext
-        inc     hl
-        inc     hl
-; CLI paramaters contain drive specification
-; 0 = current
-; 1 = drive A
-; 2 = drive B and so on.
-        sub     $41
-        jr      c,espinval
-        inc     a
-        ld      (de),a
-        jr      lenome_ext
-espinval:
-        ld      a,$ff       ; invalid drive to force bdos to return error
-        ld      (de),a
-lenome_ext:
-        inc     de
-        ld      c,0
-        ld      b,8
-        call    lenome
-        ld      a,(hl)
-        cp      '.'
-        jr      nz,fimnome_ext
-        inc     hl
-        ld      b,3
-        call    lenome_0
-fimnome_ext:
-        ld      a,c
-        ret
-lenome:
-        call    testacar
-        jr      c,codesp
-        jr      z,codesp
-lenome_0:
-        call    testacar
-        jr      c,tstfimle
-        jr      z,tstfimle
-        inc     hl
-        inc     b
-        dec     b
-        jr      z,lenome_0
-        cp      '*'
-        jr      z,coringa
-        ld      (de),a
-        inc     de
-        dec     b
-        cp      '?'
-        jr      z,acheicor
-        jr      lenome_0
-coringa:
-        call    subscor
-acheicor:
-        ld      c,1
-codesp:
-        ld      a,e
-        add     a,b
-        ld      e,a
-        ret     nc
-        inc     d
-        ret
-tstfimle:
-        inc     b
-        dec     b
-        ret     z
-        ld      a,' '
-        jr      preenche
-subscor:
-        ld      a,'?'
-preenche:
-        ld      (de),a
-        inc     de
-        djnz    preenche
-        ret
-pulaesp:
-        ld      a,(hl)
-        inc     hl
-        call    testaesp
-        jr      z,pulaesp
-        dec     hl
-        ret
-testacar:
-        ld      a,(hl)
-        cp      'a'
-        jr      c,testacar_1
-        cp      $7b
-        jr      nc,testacar_1
-        sub     $20
-testacar_1: 
-        cp      ':'
-        ret     z
-        cp      '.'
-        ret     z
-        cp      $22
-        ret     z
-        cp      '['
-        ret     z
-        cp      ']'
-        ret     z
-        cp      '_'
-        ret     z
-        cp      '/'
-        ret     z
-        cp      '+'
-        ret     z
-        cp      '='
-        ret     z
-        cp      ';'
-        ret     z
-        cp      ','
-        ret     z
-testaesp:
-        cp      $09
-        ret     z
-        cp      ' '
-        ret
-
-resetfcb:
-        ex    af,af'
-        exx
-        ld    hl,fcb
-        ld    (hl),0
-        ld    de,fcb+1
-        ld    bc,$23
-        ldir
-        ld    hl,fcb_fn
-        ld    (hl),' '
-        ld    de,fcb_fn+1
-        ld    bc,10
-        ldir
-        exx
-        ex    af,af'
         ret
 
 ; Search for the EEPROM
@@ -364,7 +157,7 @@ writeram:
         ld      ($9555),a 
         ; -
         call    delay
-        ;
+        ; - 
         ld      a,e
         ld      (hl),a
         call    checkifsaved
@@ -400,12 +193,30 @@ checkifsaved_found:
         ret
 
 delay:
-        ld      bc,1000
+        ld      bc,20
 delay0:
         dec     bc
         ld      a,b
         or      c
         jr      nz,delay0
+        ret
+
+disable_w_prot:
+        push    af
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $80
+        ld      ($9555),a 
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $20
+        ld      ($9555),a
+        call    delay
+        pop     af
         ret
 
 ; -------------------------------------------------------
@@ -529,7 +340,6 @@ PUTCHAR:
         pop     bc
         ret
 
-
 txt_ramsearch:   db      "Search for ram in $4000",13,10,0
 txt_ramfound:   db      "Found RAM in slot ",0
 txt_newline:    db      13,10,0
@@ -546,35 +356,4 @@ txt_endoffile:   db "End of file",13,10,0
 thisslt: db $FF
 curraddr: dw $0000
 
-fcb:
-; reference: https://www.msx.org/wiki/FCB    
-fcb_drv: db 0           ; Drive number containing the file.
-                        ; (0 for Default drive, 1 for A, 2 for B, ..., 8 for H)
 
-fcb_fn: db "filename"   ; 8 bytes for filename and 3 bytes for its extension. 
-        db "ext"        ; When filename or extension has less than 8 or 3, the rest are 
-                        ; filled in by spaces (20h). In case of search "?" (3Fh) may be used
-                        ; to represent any character.
-fcb_ex: db 0            ; "Current block LO" or "Extent number LO" depending of function called.
-fcb_s1: db 0            ; "Current block HI" or "File attributes" (DOS2) depending of function called.
-fcb_s2: db 0            ; "Record size LO" or "Extent number HI" depending of function called. 
-                        ; NOTE: Because of Extent number the record size must be manually 
-                        ; defined after opening a file!
-fcb_rc: db 0            ; "Record size HI" or "Record count" depending of function called.
-fcb_al: db 0,0,0,0      ; File size in bytes (1~4294967296).
-        db 0,0          ; Date (DOS1) / Volume ID (DOS2)
-        db 0,0          ; Time (DOS1) / Volume ID (DOS2)
-        db 0            ; Device ID. (DOS1)
-                        ; FBh = PRN (Printer)
-                        ; FCh = LST (List)
-                        ; FCh = NUL (Null)
-                        ; FEh = AUX (Auxiliary)
-                        ; FFh = CON (Console)
-        db 0            ; Directory location. (DOS1)
-        db 0,0          ; Top cluster number of the file. (DOS1)
-        db 0,0          ; Last cluster number accessed (DOS1)
-        db 0,0          ; Relative location from top cluster of the file number of clusters
-                        ; from top of the file to the last cluster accessed. (DOS1)
-fcb_cr: db 0            ; Current record within extent (0...127)
-fcb_rn: db 0,0,0,0      ; Random record number. If record size <64 then all 4 bytes will be used.
-        db 0,0,0

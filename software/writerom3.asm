@@ -5,7 +5,7 @@
 ;| Version : 1.0                                                             |
 ;|                                                                           |
 ;| Copyright (c) 2020 Ronivon Candido Costa (ronivon@outlook.com)            |
-;|                                                                          |
+;|                                                                           |
 ;| All rights reserved                                                       |
 ;|                                                                           |
 ;| Redistribution and use in source and compiled forms, with or without      |
@@ -29,12 +29,34 @@
 ;| along with MSX PI Interface.  If not, see <http://www.gnu.org/licenses/>. |
 ;|===========================================================================|
 ;
+; Compile this file with z80asm:
+;  z80asm writerom.asm at28c256.asm -o at28c256.com
+; 
 ; File history :
 ; 1.0  - 27/06/2020 : initial version
-; Compile with z80asm: 
-;  z80asm writerom.asm writerom.asm -o writerom.com
+;        05/08/2020 : Revised version
+;
+; Note on this code:
+; The AT28C256 seems to have too fast writting times for the MSX.
+; Even though it can be writtem correctly by this software,
+; the SDP (software data protection) is not working.
+; My guess is that the cycle times for the protocol is too fast for the MSX
+; (it is aroudn nanosecods).
+; I choose to leave the call to the SDP routines in place, as it is not causing
+; any harm, or noticeable delays in the writting process for these small 32K eeproms.
+; In case anyone comes through this code, and make the SDP work, please get in touch.
+;
+; How to write and protect the eeprom against undesireable writes:
+; 
+; 1. Put jumper /wr in the interface
+; 2. Plug the interface on the MSX and switch it on
+; 3. Write the ROM to the EEPROM, for example: "at28c256 galaga.rom"
+; 4. Switch off MSX and remove the interface
+; 5. Remove the /wr Jumper
+; 6. Plug the interface on the MSX and switch it on. Will boot into the game.
+; ====================================================================================
 
-dma:            equ $80
+dma:            equ     $80
 regsize:        equ     1
 numregtoread:   equ     64
 TEXTTERMINATOR: EQU     0
@@ -78,43 +100,28 @@ ERRFLG:         EQU     $F414
 HIMEM:          EQU     $FC4A
 MSXPICALLBUF:   EQU     $E3D8
 
-RAMAD0:         equ $F341             ; slotid DOS ram page 0
-RAMAD1:         equ $F342             ; slotid DOS ram page 1
-RAMAD2:         equ $F343             ; slotid DOS ram page 2
-RAMAD3:         equ $F344             ; slotid DOS ram page 3
+RAMAD0:         EQU     $F341             ; slotid DOS ram page 0
+RAMAD1:         EQU     $F342             ; slotid DOS ram page 1
+RAMAD2:         EQU     $F343             ; slotid DOS ram page 2
+RAMAD3:         EQU     $F344             ; slotid DOS ram page 3
 
 ; This is a MSX-DOS program
 ; STart address is $100
 
         org     $100
     
-        ld      hl,txt_eraseflash
+        ld      hl,txt_credits
         call    print
-
-        call    at28c_erase
-
-        ret
-
-        ld      a,1
-        ld      hl,$4000
-        ld      e,$43
-        call    at28cwrite
-        ld      a,1
-        ld      hl,$4001
-        ld      e,$44
-        call    at28cwrite          
-        ret
-
-        ;call    disable_w_prot
-        ;call    search_eeprom
-
+        ld      hl,txt_ramsearch
+        call    print
+        call    search_eeprom
+; Reenable interrupts that was disabled by RDSLT
+        ei
 ; if could not find the cartridge, exit with error message
-        ;ld      hl,txt_ramnotfound
-        ;jp      c,print
-
+        ld      hl,txt_ramnotfound
+        jp      c,print
 ; Found writable memory therefore can continue writing the ROM into the eeprom
 instcall:
-
         push    af
         ld      hl,txt_ramfound
         call    print
@@ -126,7 +133,6 @@ instcall:
         ld      hl,txt_ffound
         call    print
         pop     af  ; slot with ram is in (thisslt)
-
 ; read filename passed with DOS command line
 ; and update fcb with filename
         call    resetfcb
@@ -141,7 +147,7 @@ instcall:
         ld      a,(thisslt)
         ld      h,$80
         call    ENASLT
-        call    erase_chip
+        ;call    erase_chip
         ld      de,$4000
         ld      (curraddr),de
 writeeeprom:
@@ -167,7 +173,10 @@ writeeeprom0:
         ld      a,(hl)
         push    bc
         push    hl
-        call    writebyte
+        ld      hl,(curraddr)
+        call    write_eeprom
+        inc     hl
+        ld      (curraddr),hl
         pop     hl
         pop     bc
         inc     hl
@@ -177,6 +186,7 @@ writeeeprom0:
         jr      z,endofreading   
         jr      writeeeprom
 endofreading:
+        call    enable_w_prot_final
         ld      a,(RAMAD1)
         ld      h,$40
         call    ENASLT
@@ -192,13 +202,6 @@ endofreading:
 fnotfounderr:
         ld     hl,txt_fnotfound
         call   print
-        ret
-
-writebyte:
-        ld      de,(curraddr)
-        ld      (de),a
-        inc     de
-        ld      (curraddr),de   ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
         ret
 
 ; this is where the program ends        
@@ -306,7 +309,8 @@ PUTCHAR:
         ret
 
 ; ===============================================================
-; Get parameters from DOS CLI
+; Get parameters from DOS CLI and parse to get file parameters
+; I extracted this part from an old MSX Book I have.
 ; ===============================================================
 readcliparms:
         ld      de,fcb
@@ -454,9 +458,154 @@ resetfcb:
         ex    af,af'
         ret
 
-; ===============================================================
+; Search for the EEPROM
+search_eeprom:
+        ld      a,$FF
+        ld      (thisslt),a
+nextslot:
+         di
+         call    sigslot
+         cp      $FF
+         jr      z,endofsearch
+         ld      h,$40
+         call    ENASLT
+         call    testram
+         jr      c,nextslot
+         ld      a,(RAMAD1)
+         ld      h,$40
+         call    ENASLT
+         ld      a,(thisslt)   ; return the slot where eeprom was found
+         or      a
+         ret 
+endofsearch:
+         ld      a,(RAMAD1)
+         ld      h,$40
+         call    ENASLT
+         ld      a,$FF
+         scf
+         ret 
+
+testram:
+        ld      hl,$4000
+        ld      a,'A'
+        call    write_test
+        ret     c
+        ld      a,'T'
+        call    write_test
+        ret     c
+        ld      a,'C'
+        call    write_test
+        ret 
+
+write_test:
+        ld      b,a
+        call    enable_w_prot
+        ld      (hl),a
+        call    waitforwrite
+        ld      a,(hl)
+        inc     hl
+        cp      b
+        ret     z
+        scf
+        ret
+
+waitforwrite:
+        push    bc
+        ld      bc,300
+waitforwrite0:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,waitforwrite0
+        pop     bc
+        ret
+
+write_eeprom:
+        ld      b,a
+        call    enable_w_prot
+        ld      a,b
+        ld      (hl),a           ; write the byte to the eeprom
+write_eeprom_check:
+        ld      a,(hl)           ; read the byte back
+        cp      b                ; verify if it matches what was written
+        jr      nz,write_eeprom_check  ; loops waiting the eeprom finishing the write
+                                 ; check the datasheet if in doubt why this loop is here
+        ret
+
+delay_cmd:
+        push    bc
+        ld      bc,$0000
+delay_cmd0:
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,delay_cmd
+        pop     bc
+        ret
+
+; -------------------------------------------------------
+; SIGSLOT
+; Returns in A the next slot every time it is called.
+; For initializing purposes, thisslt has to be #FF.
+; If no more slots, it returns A=#FF.
+; this code is programmed by Nestor Soriano aka Konamiman
+; --------------------------------------------------------
+sigslot:
+    ld      a, (thisslt)                ; Returns the next slot, starting by
+    cp      $FF                         ; slot 0. Returns #FF when there are not more slots
+    jr      nz, .p1                     ; Modifies AF, BC, HL.
+    ld      a, (EXPTBL)
+    and     %10000000
+    ld      (thisslt), a
+    ret
+.p1:
+    ld      a, (thisslt)
+    cp      %10001111
+    jr      z, .nomaslt
+    cp      %00000011
+    jr      z, .nomaslt
+    bit     7, a
+    jr      nz, .sltexp
+.p2:
+    and     %00000011
+    inc     a
+    ld      c, a
+    ld      b, 0
+    ld      hl, EXPTBL
+    add     hl, bc
+    ld      a, (hl)
+    and     %10000000
+    or      c
+    ld      (thisslt), a
+    ret
+.sltexp:
+    ld      c, a
+    and     %00001100
+    cp      %00001100
+    ld      a, c
+    jr      z, .p2
+    add     a, %00000100
+    ld      (thisslt), a
+    ret
+.nomaslt:
+    ld      a, $FF
+    ret
+
+; ==================================================================
 ; Atmel AT28C256 Programming code
-; ===============================================================
+; There SDP (software data protection) available in the eeprom.
+; However, I could not make it work on the MSX despite many efforts.
+; I believe the MSX is too slow to cope with the eeprom timing reqs.
+; I leave the coee here for information and documentation purposes.
+; ==================================================================
 ; Disable write-protection
 disable_w_prot:
         push    af
@@ -521,265 +670,10 @@ erase_chip:
         call    waitforwrite
         pop     af
         ret
+; ==============================================================
 
-; Search for the EEPROM
-search_eeprom:
-        ld      a,$FF
-        ld      (thisslt),a
-nextslot:
-         di
-         call    sigslot
-         cp      $FF
-         jr      z,endofsearch
-         ld      h,$40
-         call    ENASLT
-         call    testram
-         jr      c,nextslot
-         ld      a,(RAMAD1)
-         ld      h,$40
-         call    ENASLT
-         ld      a,(thisslt)   ; return the slot where eeprom was found
-         or      a
-         ret 
-endofsearch:
-         ld      a,(RAMAD1)
-         ld      h,$40
-         call    ENASLT
-         ld      a,$FF
-         scf
-         ret 
-
-testram:
-        ld      hl,$4000
-        ld      a,'A'
-        call    writeram
-        ret     c
-        ld      a,'T'
-        call    writeram
-        ret     c
-        ld      a,'C'
-        call    writeram
-        ret 
-
-writeram:
-        ld      b,a
-        call    enable_w_prot
-        ld      (hl),a
-        call    waitforwrite
-        ld      a,(hl)
-        inc     hl
-        cp      b
-        ret     z
-        scf
-        ret
-
-waitforwrite:
-        push    bc
-        ld      bc,300
-waitforwrite0:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,waitforwrite0
-        pop     bc
-        ret
-
-delay_cmd:
-        push    bc
-        ld      bc,$0000
-delay_cmd0:
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,delay_cmd
-        pop     bc
-        ret
-
-; -------------------------------------------------------
-; SIGSLOT
-; Returns in A the next slot every time it is called.
-; For initializing purposes, thisslt has to be #FF.
-; If no more slots, it returns A=#FF.
-; this code is programmed by Nestor Soriano aka Konamiman
-; --------------------------------------------------------
-sigslot:
-    ld      a, (thisslt)                ; Returns the next slot, starting by
-    cp      $FF                         ; slot 0. Returns #FF when there are not more slots
-    jr      nz, .p1                     ; Modifies AF, BC, HL.
-    ld      a, (EXPTBL)
-    and     %10000000
-    ld      (thisslt), a
-    ret
-.p1:
-    ld      a, (thisslt)
-    cp      %10001111
-    jr      z, .nomaslt
-    cp      %00000011
-    jr      z, .nomaslt
-    bit     7, a
-    jr      nz, .sltexp
-.p2:
-    and     %00000011
-    inc     a
-    ld      c, a
-    ld      b, 0
-    ld      hl, EXPTBL
-    add     hl, bc
-    ld      a, (hl)
-    and     %10000000
-    or      c
-    ld      (thisslt), a
-    ret
-.sltexp:
-    ld      c, a
-    and     %00001100
-    cp      %00001100
-    ld      a, c
-    jr      z, .p2
-    add     a, %00000100
-    ld      (thisslt), a
-    ret
-.nomaslt:
-    ld      a, $FF
-    ret
-
-; -----------------------------------------------
-; at28c256 routines
-; fast write byte E to address in HL, in slot A
-; Inputs:
-; A = slot where the eeprom is connected
-; HL = address to write (range $4000 to $CFFF)
-; E = byte to write
-; -----------------------------------------------
-at28cwrite:
-    push   de
-    push   hl
-    push   af
-    ld     h,$40     ; start enabling the slot
-    call   ENASLT
-    pop    af
-    ld     h,$80
-    call   ENASLT
-    pop    hl
-    pop    de
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$a0
-    ld     ($9555),a
-    ld     a,e           ; now can write the byute to the eeprom address
-    ld     (hl),a
-    call   delay
-    ld      a,(RAMAD1)   ; re-enable the original slots
-    ld      h,$40
-    call    ENASLT
-    ld      a,(RAMAD2)
-    ld      h,$80
-    call    ENASLT
-    ret
-
-at28cwrite2:
-    push   de
-    push   hl
-    push   af
-    ld     h,$40     ; start enabling the slot
-    call   ENASLT
-    pop    af
-    ld     h,$80
-    call   ENASLT
-    call   at28c_sdp_disable
-    pop    hl
-    pop    de
-    ld     a,e           ; now can write the byute to the eeprom address
-    ld     (hl),a
-    call   at28c_sdp_enable
-    ld     a,(RAMAD1)   ; re-enable the original slots
-    ld     h,$40
-    call   ENASLT
-    ld     a,(RAMAD2)
-    ld     h,$80
-    call   ENASLT
-    ret
-
-at28c_sdp_enable:
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$a0
-    ld     ($9555),a
-    call   delay
-    ret
-
-at28c_sdp_disable:
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$80
-    ld     ($9555),a
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$20
-    ld     ($9555),a
-    call   delay
-    ret
-
-; Erase at28c256 eeprom in slot passed in A
-at28c_erase:
-    push   af
-    ld     h,$40     ; start enabling the slot
-    call   ENASLT
-    pop    af
-    ld     h,$80
-    call   ENASLT
-    ld     a,$AA         ; send the eeprom control codes
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$80
-    ld     ($9555),a
-    ld     a,$AA 
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$10
-    ld     ($9555),a
-    call   delay
-    ld     a,(RAMAD1)   ; re-enable the original slots
-    ld     h,$40
-    call   ENASLT
-    ld     a,(RAMAD2)
-    ld     h,$80
-    call   ENASLT
-    ret
-
-delay:
-    ld     b,5          ; wait eeprom to finish erasing
-delay1:
-    push   bc           
-    ld     bc,0         
-delay2:
-    dec    bc
-    ld     a,b
-    or     c
-    jr     nz,delay2
-    pop    bc
-    djnz   delay1
-    ret
-
-
+txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
+             db "(c) Ronivon Costa, 2020",13,10,13,10,0
 txt_ramsearch:   db      "Search for ram in $4000",13,10,0
 txt_ramfound:   db      "Found RAM in slot ",0
 txt_newline:    db      13,10,0
@@ -792,7 +686,6 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-txt_eraseflash:   db      "Erasing EEPROM...",13,10,0
 
 thisslt: db $FF
 curraddr: dw $0000

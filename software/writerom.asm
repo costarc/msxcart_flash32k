@@ -88,23 +88,18 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
 
         org     $100
     
+        ld      hl,txt_credits
+        call    print
         ld      hl,txt_ramsearch
         call    print
-
-        call    disable_w_prot
         call    search_eeprom
-
 ; Reenable interrupts that was disabled by RDSLT
-
         ei
-
 ; if could not find the cartridge, exit with error message
         ld      hl,txt_ramnotfound
         jp      c,print
-
 ; Found writable memory therefore can continue writing the ROM into the eeprom
 instcall:
-
         push    af
         ld      hl,txt_ramfound
         call    print
@@ -116,7 +111,6 @@ instcall:
         ld      hl,txt_ffound
         call    print
         pop     af  ; slot with ram is in (thisslt)
-
 ; read filename passed with DOS command line
 ; and update fcb with filename
         call    resetfcb
@@ -131,7 +125,7 @@ instcall:
         ld      a,(thisslt)
         ld      h,$80
         call    ENASLT
-        call    erase_chip
+        ;call    erase_chip
         ld      de,$4000
         ld      (curraddr),de
 writeeeprom:
@@ -148,7 +142,7 @@ writeeeprom:
                                     ; the last record of the file. will test 
                                     ; at the end of this loop, below.
         ld      b,l     ; hl = number of bytes read from disk, but we are
-                        ; reading only 128 bytes at a time
+                        ; reading only 64 bytes at a time
                         ; therefore fits in register b
         ld      hl,dma  ; Area where the record was written
         di
@@ -175,7 +169,7 @@ endofreading:
         call    ENASLT
         ld      hl,txt_endoffile
         call    print
-        call    enable_w_prot
+        call    enable_w_prot_final
         ei
         ret
 
@@ -296,7 +290,8 @@ PUTCHAR:
         ret
 
 ; ===============================================================
-; Get parameters from DOS CLI
+; Get parameters from DOS CLI and parse to get file parameters
+; I extracted this part from an old MSX Book I have.
 ; ===============================================================
 readcliparms:
         ld      de,fcb
@@ -444,59 +439,6 @@ resetfcb:
         ex    af,af'
         ret
 
-; ===============================================================
-; Atmel AT28C256 Programming code
-; ===============================================================
-; Disable write-protection
-disable_w_prot:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $20
-        ld      ($9555),a
-        call    waitforwrite
-        pop     af
-        ret
-
-; Enable write-protection
-enable_w_prot:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $A0
-        ld      ($9555),a 
-        call    waitforwrite
-        pop     af
-        ret
-
-erase_chip:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $10
-        ld      ($9555),a 
-        call    waitforwrite
-        pop     af
-        ret
-
 ; Search for the EEPROM
 search_eeprom:
         ld      a,$FF
@@ -527,16 +469,16 @@ endofsearch:
 testram:
         ld      hl,$4000
         ld      a,'A'
-        call    writeram
+        call    write_test
         ret     c
         ld      a,'T'
-        call    writeram
+        call    write_test
         ret     c
         ld      a,'C'
-        call    writeram
+        call    write_test
         ret 
 
-writeram:
+write_test:
         ld      b,a
         call    enable_w_prot
         ld      (hl),a
@@ -564,6 +506,29 @@ waitforwrite0:
         ld      a,b
         or      c
         jr      nz,waitforwrite0
+        pop     bc
+        ret
+
+write_eeprom:
+        ld      b,a
+        ;call    enable_w_prot
+        ld      (hl),a           ; write the byte to the eeprom
+        ;call    waitforwrite
+write_eeprom_check:
+        ld      a,(hl)           ; read the byte back
+        cp      b                ; verify if it matches what was written
+        jr      nz,write_eeprom_check  ; loops waiting the eeprom finishing the write
+        inc     hl                     ; check the datasheet if in doubt why this loop is here
+        ret
+
+delay_cmd:
+        push    bc
+        ld      bc,$0000
+delay_cmd0:
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,delay_cmd
         pop     bc
         ret
 
@@ -615,6 +580,81 @@ sigslot:
     ld      a, $FF
     ret
 
+; ==================================================================
+; Atmel AT28C256 Programming code
+; There SDP (software data protection) available in the eeprom.
+; However, I could not make it work on the MSX despite many efforts.
+; I believe the MSX is too slow to cope with the eeprom timing reqs.
+; I leave the coee here for information and documentation purposes.
+; ==================================================================
+; Disable write-protection
+disable_w_prot:
+        push    af
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $80
+        ld      ($9555),a 
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $20
+        ld      ($9555),a
+        call    waitforwrite
+        pop     af
+        ret
+
+; Enable write-protection
+enable_w_prot:
+        push    af
+        ld      a, $AA
+        ld      ($9555),a     ; 0x5555 + 0x4000
+        ld      a, $55
+        ld      ($6AAA),a     ; 0x2AAA + 0x4000
+        ld      a, $A0
+        ld      ($9555),a     ; 0x5555 + 0x4000
+        call    waitforwrite
+        pop     af
+        ret
+
+enable_w_prot_final:
+        push    af
+        ld      a, $AA
+        ld      ($9555),a
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $A0
+        ld      ($9555),a 
+        ld      b,10
+waitloop:
+        call    waitforwrite
+        djnz    waitloop
+        pop     af
+        ret
+
+erase_chip:
+        push    af
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $80
+        ld      ($9555),a 
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $10
+        ld      ($9555),a 
+        call    waitforwrite
+        pop     af
+        ret
+; ==============================================================
+
+txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
+             db "(c) Ronivon Costa, 2020",13,10,13,10,0
 txt_ramsearch:   db      "Search for ram in $4000",13,10,0
 txt_ramfound:   db      "Found RAM in slot ",0
 txt_newline:    db      13,10,0

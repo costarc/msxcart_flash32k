@@ -88,21 +88,19 @@ RAMAD3:         equ $F344             ; slotid DOS ram page 3
 
         org     $100
     
-        ld      hl,txt_eraseflash
+        ld      hl,txt_writingflash_nop
         call    print
 
-        call    at28c_erase
-
-        ret
+        ;call    at28c_erase
 
         ld      a,1
         ld      hl,$4000
-        ld      e,$43
-        call    at28cwrite
+        ld      e,'N'
+        call    at28cwrite_nop
         ld      a,1
         ld      hl,$4001
-        ld      e,$44
-        call    at28cwrite          
+        ld      e,'P'
+        call    at28cwrite_nop      
         ret
 
         ;call    disable_w_prot
@@ -687,6 +685,27 @@ at28cwrite:
     call    ENASLT
     ret
 
+at28cwrite_nop:
+    push   de
+    push   hl
+    push   af
+    ld     h,$40     ; start enabling the slot
+    call   ENASLT
+    pop    af
+    ld     h,$80
+    call   ENASLT
+    pop    hl
+    pop    de
+    ld     a,e           ; now can write the byute to the eeprom address
+    ld     (hl),a
+    ld      a,(RAMAD1)   ; re-enable the original slots
+    ld      h,$40
+    call    ENASLT
+    ld      a,(RAMAD2)
+    ld      h,$80
+    call    ENASLT
+    ret
+
 at28cwrite2:
     push   de
     push   hl
@@ -785,6 +804,7 @@ txt_ramfound:   db      "Found RAM in slot ",0
 txt_newline:    db      13,10,0
 txt_ramnotfound:   db      "ram not found",13,10,0
 txt_writingflash:   db      "Writing to EEPROM...",13,10,0
+txt_writingflash_nop:   db      "Writing to EEPROM without write protection...",13,10,0
 txt_completed: db      "Completed.",13,10,0
 txt_nofn:         db "Filename is empty or not valid",13,10,0
 txt_fileopenerr:  db "Error opening file",13,10,0
@@ -792,7 +812,6 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-txt_eraseflash:   db      "Erasing EEPROM...",13,10,0
 
 thisslt: db $FF
 curraddr: dw $0000

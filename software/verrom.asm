@@ -5,7 +5,7 @@
 ;| Version : 1.0                                                             |
 ;|                                                                           |
 ;| Copyright (c) 2020 Ronivon Candido Costa (ronivon@outlook.com)            |
-;|                                                                          |
+;|                                                                           |
 ;| All rights reserved                                                       |
 ;|                                                                           |
 ;| Redistribution and use in source and compiled forms, with or without      |
@@ -31,10 +31,9 @@
 ;
 ; File history :
 ; 1.0  - 27/06/2020 : initial version
-; Compile with z80asm: 
-;  z80asm writerom.asm writerom.asm -o writerom.com
+;        05/08/2020 : Revised versoin
 
-dma:            equ $80
+dma:            equ     $80
 regsize:        equ     1
 numregtoread:   equ     64
 TEXTTERMINATOR: EQU     0
@@ -78,130 +77,24 @@ ERRFLG:         EQU     $F414
 HIMEM:          EQU     $FC4A
 MSXPICALLBUF:   EQU     $E3D8
 
-RAMAD0:         equ $F341             ; slotid DOS ram page 0
-RAMAD1:         equ $F342             ; slotid DOS ram page 1
-RAMAD2:         equ $F343             ; slotid DOS ram page 2
-RAMAD3:         equ $F344             ; slotid DOS ram page 3
+RAMAD0:         EQU     $F341             ; slotid DOS ram page 0
+RAMAD1:         EQU     $F342             ; slotid DOS ram page 1
+RAMAD2:         EQU     $F343             ; slotid DOS ram page 2
+RAMAD3:         EQU     $F344             ; slotid DOS ram page 3
 
 ; This is a MSX-DOS program
 ; STart address is $100
 
         org     $100
     
-        ld      hl,txt_eraseflash
+        ld      hl,txt_ramsearch
         call    print
-
-        call    at28c_erase
-
-        ret
-
-        ld      a,1
-        ld      hl,$4000
-        ld      e,$43
-        call    at28cwrite
-        ld      a,1
-        ld      hl,$4001
-        ld      e,$44
-        call    at28cwrite          
-        ret
-
-        ;call    disable_w_prot
-        ;call    search_eeprom
-
-; if could not find the cartridge, exit with error message
-        ;ld      hl,txt_ramnotfound
-        ;jp      c,print
-
-; Found writable memory therefore can continue writing the ROM into the eeprom
-instcall:
-
-        push    af
-        ld      hl,txt_ramfound
-        call    print
-        pop     af
-        push    af
-        call    PRINTNUMBER
-        ld      hl,txt_newline
-        call    print
-        ld      hl,txt_ffound
-        call    print
-        pop     af  ; slot with ram is in (thisslt)
-
-; read filename passed with DOS command line
-; and update fcb with filename
-        call    resetfcb
-        call    readcliparms
-        call    openfile
+        call    search_eeprom
+        ld      hl,txt_ramnotfound
+        ld      a,(thisslt)
         cp      $ff
-        jr      z, fnotfounderr 
-        call    setdma
-        ld      a,(thisslt)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(thisslt)
-        ld      h,$80
-        call    ENASLT
-        call    erase_chip
-        ld      de,$4000
-        ld      (curraddr),de
-writeeeprom:
-        ld      a,'.'
-        call    PUTCHAR
-        call    readfileregister    ; read 1 block of data from disk
-        cp      2
-        jr      nc,filereaderr      ; some error
-        ld      d,a                 ; save error in D for a while
-        ld      a,h
-        or      l
-        jr      z,endofreading      ; number of bytes read is zero, end.
-        push    de                  ; save error code because this might be
-                                    ; the last record of the file. will test 
-                                    ; at the end of this loop, below.
-        ld      b,l     ; hl = number of bytes read from disk, but we are
-                        ; reading only 64 bytes at a time
-                        ; therefore fits in register b
-        ld      hl,dma  ; Area where the record was written
-        di
-        ;call    enable_w_prot   ;will send protection command, that allow written once to the EEPROM
-writeeeprom0:
-        ld      a,(hl)
-        push    bc
-        push    hl
-        call    writebyte
-        pop     hl
-        pop     bc
-        inc     hl
-        djnz    writeeeprom0
-        pop     af              ; retrieve the error code
-        cp      1               ; 1 = this was last record.
-        jr      z,endofreading   
-        jr      writeeeprom
-endofreading:
-        ld      a,(RAMAD1)
-        ld      h,$40
-        call    ENASLT
-        ld      a,(RAMAD2)
-        ld      h,$80
-        call    ENASLT
-        ld      hl,txt_endoffile
-        call    print
-        call    enable_w_prot_final
-        ei
+        call    z,print
         ret
-
-fnotfounderr:
-        ld     hl,txt_fnotfound
-        call   print
-        ret
-
-writebyte:
-        ld      de,(curraddr)
-        ld      (de),a
-        inc     de
-        ld      (curraddr),de   ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
-        ret
-
-; this is where the program ends        
 
 openfile:
         ld     c,$0f
@@ -231,78 +124,6 @@ setdma:
         ld      (fcb+32),hl
         ld      (fcb+34),hl
         ld      (fcb+36),hl
-        ret
-
-;-----------------------
-; PRINT                |
-;-----------------------
-print:
-        push    af
-        ld      a,(hl)      ;get a character to print
-        cp      TEXTTERMINATOR
-        jr      Z,PRINTEXIT
-        cp      10
-        jr      nz,PRINT1
-        pop     af
-        push    af
-        ld      a,10
-        jr      nc,PRINT1
-        call    PUTCHAR
-        ld      a,13
-PRINT1:
-        call    PUTCHAR     ;put a character
-        INC     hl
-        pop     af
-        jr      print
-PRINTEXIT:
-        pop     af
-        ret
-
-;-----------------------
-; PRINTNUMBER          |
-;-----------------------
-PRINTNUMBER:
-printnumber:
-        push    de
-        ld      e,a
-        push    de
-        AND     0F0H
-        rra
-        rra
-        rra
-        rra
-        call    PRINTDIGIT
-        pop     de
-        ld      a,e
-        AND     0FH
-        call    PRINTDIGIT
-        pop     de
-        ret
-
-PRINTDIGIT:
-        cp      0AH
-        jr      c,PRINTNUMERIC
-PRINTALFA:
-        ld      d,37H
-        jr      PRINTNUM1
-
-PRINTNUMERIC:
-        ld      d,30H
-PRINTNUM1:
-        add     a,d
-        call    PUTCHAR
-        ret
-
-PUTCHAR:
-        push    bc
-        push    de
-        push    hl
-        ld      e,a
-        ld      c,2
-        call    BDOS
-        pop     hl
-        pop     de
-        pop     bc
         ret
 
 ; ===============================================================
@@ -454,74 +275,6 @@ resetfcb:
         ex    af,af'
         ret
 
-; ===============================================================
-; Atmel AT28C256 Programming code
-; ===============================================================
-; Disable write-protection
-disable_w_prot:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $20
-        ld      ($9555),a
-        call    waitforwrite
-        pop     af
-        ret
-
-; Enable write-protection
-enable_w_prot:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a     ; 0x5555 + 0x4000
-        ld      a, $55
-        ld      ($6AAA),a     ; 0x2AAA + 0x4000
-        ld      a, $A0
-        ld      ($9555),a     ; 0x5555 + 0x4000
-        call    waitforwrite
-        pop     af
-        ret
-
-enable_w_prot_final:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $A0
-        ld      ($9555),a 
-        ld      b,10
-waitloop:
-        call    waitforwrite
-        djnz    waitloop
-        pop     af
-        ret
-
-erase_chip:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $10
-        ld      ($9555),a 
-        call    waitforwrite
-        pop     af
-        ret
-
 ; Search for the EEPROM
 search_eeprom:
         ld      a,$FF
@@ -535,40 +288,46 @@ nextslot:
          call    ENASLT
          call    testram
          jr      c,nextslot
-         ld      a,(RAMAD1)
-         ld      h,$40
-         call    ENASLT
-         ld      a,(thisslt)   ; return the slot where eeprom was found
-         or      a
-         ret 
+         call    showcontent
+         jr      nextslot
+
 endofsearch:
          ld      a,(RAMAD1)
          ld      h,$40
          call    ENASLT
          ld      a,$FF
          scf
-         ret 
+         ret
 
 testram:
         ld      hl,$4000
         ld      a,'A'
-        call    writeram
+        call    write_test
         ret     c
         ld      a,'T'
-        call    writeram
+        call    write_test
         ret     c
         ld      a,'C'
-        call    writeram
+        call    write_test
         ret 
 
-writeram:
-        ld      b,a
+write_test:
+        ld      b,a             ; save the byte to write in b
+        ld      a,(hl)          ; read current content of eeprom
+        ld      c,a             ; save in c
         call    enable_w_prot
-        ld      (hl),a
+        ld      a,b 
+        ld      (hl),a          ; write the actual byte to eeprom
         call    waitforwrite
-        ld      a,(hl)
+        ld      a,(hl)          ; read it back
+        cp      b               ; compare with byte written
+        push    af
+        call    enable_w_prot
+        ld      a,c             ; get back the original byte in the eeprom
+        ld      (hl),a          ; rewrite just in case to avoid corruption to any data
+        call    waitforwrite
         inc     hl
-        cp      b
+        pop     af              ; get back result of comparison (written / read)
         ret     z
         scf
         ret
@@ -592,15 +351,56 @@ waitforwrite0:
         pop     bc
         ret
 
-delay_cmd:
-        push    bc
-        ld      bc,$0000
-delay_cmd0:
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,delay_cmd
-        pop     bc
+; ==================================================================
+; Atmel AT28C256 Programming code
+; There SDP (software data protection) available in the eeprom.
+; However, I could not make it work on the MSX despite many efforts.
+; I believe the MSX is too slow to cope with the eeprom timing reqs.
+; I leave the coee here for information and documentation purposes.
+; ==================================================================
+; Disable write-protection
+disable_w_prot:
+        push    af
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $80
+        ld      ($9555),a 
+        ld      a, $AA
+        ld      ($9555),a 
+        ld      a, $55
+        ld      ($6AAA),a 
+        ld      a, $20
+        ld      ($9555),a
+        call    waitforwrite
+        pop     af
+        ret
+
+; Enable write-protection
+enable_w_prot:
+        push    af
+        ld      a,$AA
+        ld      ($9555),a     ; 0x5555 + 0x4000
+        ld      a,$55
+        ld      ($6AAA),a     ; 0x2AAA + 0x4000
+        ld      a,$A0
+        ld      ($9555),a     ; 0x5555 + 0x4000
+        call    waitforwrite
+        pop     af
+        ret
+
+showcontent:
+        ld      hl,$4000
+        ld      b,0
+showcontent0:
+        ld      a,(hl)
+        call    PRINTNUMBER
+        ld      a,' '
+        call    PUTCHAR
+        inc     hl
+        djnz    showcontent0
+        call    PRINTNEWLINE
         ret
 
 ; -------------------------------------------------------
@@ -651,134 +451,85 @@ sigslot:
     ld      a, $FF
     ret
 
-; -----------------------------------------------
-; at28c256 routines
-; fast write byte E to address in HL, in slot A
-; Inputs:
-; A = slot where the eeprom is connected
-; HL = address to write (range $4000 to $CFFF)
-; E = byte to write
-; -----------------------------------------------
-at28cwrite:
-    push   de
-    push   hl
-    push   af
-    ld     h,$40     ; start enabling the slot
-    call   ENASLT
-    pop    af
-    ld     h,$80
-    call   ENASLT
-    pop    hl
-    pop    de
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$a0
-    ld     ($9555),a
-    ld     a,e           ; now can write the byute to the eeprom address
-    ld     (hl),a
-    call   delay
-    ld      a,(RAMAD1)   ; re-enable the original slots
-    ld      h,$40
-    call    ENASLT
-    ld      a,(RAMAD2)
-    ld      h,$80
-    call    ENASLT
-    ret
 
-at28cwrite2:
-    push   de
-    push   hl
-    push   af
-    ld     h,$40     ; start enabling the slot
-    call   ENASLT
-    pop    af
-    ld     h,$80
-    call   ENASLT
-    call   at28c_sdp_disable
-    pop    hl
-    pop    de
-    ld     a,e           ; now can write the byute to the eeprom address
-    ld     (hl),a
-    call   at28c_sdp_enable
-    ld     a,(RAMAD1)   ; re-enable the original slots
-    ld     h,$40
-    call   ENASLT
-    ld     a,(RAMAD2)
-    ld     h,$80
-    call   ENASLT
-    ret
+;-----------------------
+; PRINT                |
+;-----------------------
+print:
+        push    af
+        ld      a,(hl)      ;get a character to print
+        cp      TEXTTERMINATOR
+        jr      Z,PRINTEXIT
+        cp      10
+        jr      nz,PRINT1
+        pop     af
+        push    af
+        ld      a,10
+        jr      nc,PRINT1
+        call    PUTCHAR
+        ld      a,13
+PRINT1:
+        call    PUTCHAR     ;put a character
+        INC     hl
+        pop     af
+        jr      print
+PRINTEXIT:
+        pop     af
+        ret
 
-at28c_sdp_enable:
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$a0
-    ld     ($9555),a
-    call   delay
-    ret
+;-----------------------
+; PRINTNUMBER          |
+;-----------------------
+PRINTNUMBER:
+printnumber:
+        push    de
+        ld      e,a
+        push    de
+        AND     0F0H
+        rra
+        rra
+        rra
+        rra
+        call    PRINTDIGIT
+        pop     de
+        ld      a,e
+        AND     0FH
+        call    PRINTDIGIT
+        pop     de
+        ret
 
-at28c_sdp_disable:
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$80
-    ld     ($9555),a
-    ld     a,$AA         ; send the eeprom write protection control commands
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$20
-    ld     ($9555),a
-    call   delay
-    ret
+PRINTDIGIT:
+        cp      0AH
+        jr      c,PRINTNUMERIC
+PRINTALFA:
+        ld      d,37H
+        jr      PRINTNUM1
 
-; Erase at28c256 eeprom in slot passed in A
-at28c_erase:
-    push   af
-    ld     h,$40     ; start enabling the slot
-    call   ENASLT
-    pop    af
-    ld     h,$80
-    call   ENASLT
-    ld     a,$AA         ; send the eeprom control codes
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$80
-    ld     ($9555),a
-    ld     a,$AA 
-    ld     ($9555),a
-    ld     a,$55
-    ld     ($6AAA),a
-    ld     a,$10
-    ld     ($9555),a
-    call   delay
-    ld     a,(RAMAD1)   ; re-enable the original slots
-    ld     h,$40
-    call   ENASLT
-    ld     a,(RAMAD2)
-    ld     h,$80
-    call   ENASLT
-    ret
+PRINTNUMERIC:
+        ld      d,30H
+PRINTNUM1:
+        add     a,d
+        call    PUTCHAR
+        ret
 
-delay:
-    ld     b,5          ; wait eeprom to finish erasing
-delay1:
-    push   bc           
-    ld     bc,0         
-delay2:
-    dec    bc
-    ld     a,b
-    or     c
-    jr     nz,delay2
-    pop    bc
-    djnz   delay1
-    ret
+PUTCHAR:
+        push    bc
+        push    de
+        push    hl
+        ld      e,a
+        ld      c,2
+        call    BDOS
+        pop     hl
+        pop     de
+        pop     bc
+        ret
 
+PRINTNEWLINE:
+       push     hl
+       ld       hl,txt_newline
+       call     print
+       pop      hl
+       ret
 
 txt_ramsearch:   db      "Search for ram in $4000",13,10,0
 txt_ramfound:   db      "Found RAM in slot ",0
@@ -792,8 +543,6 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
-txt_eraseflash:   db      "Erasing EEPROM...",13,10,0
-
 thisslt: db $FF
 curraddr: dw $0000
 

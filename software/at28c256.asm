@@ -991,9 +991,9 @@ wait_eeprom0:
     db "at28csdp 01",13,10,13,10
     db "Afterwards, you can use verrom.com to verify if the SDP was correctly disable.",13,10,0
     txt_invparms: db "Invalid parameters",13,10
-    txt_help: db "Available options:Format: at28c256 </options> /f file.rom",13,10,13,10
+    txt_help: db "Command line options: at28c256 </h | /i> </s /f file.rom>",13,10,13,10
     db "/h Show this help",13,10
-    db "/s <slot number> (must be 2 digits)",13,10
+    db "/s <slot number>",13,10
     db "/i Show initial 256 byets of the slot cartridge",13,10
     db "/f File name with extension, for example game.rom",13,10,0
 

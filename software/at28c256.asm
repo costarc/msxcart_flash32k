@@ -114,16 +114,31 @@ RAMAD3:         EQU     $F344             ; slotid DOS ram page 3
     
         ld      hl,txt_credits
         call    print
+        call    resetfcb
+        call    parseargs
+        ld      a,(ignorerc)
+        or      a
+        ret     z
+        ld      hl,txt_invparms
+        ld      a,(parm_found)
+        cp      $ff
+        jp      z,print
+        ld      hl,txt_needfname
+        ld      a,(data_option_f)
+        cp      $ff
+        jp      z,print
+
+        ld      a,(data_option_s)
+        cp      $ff
+        jr      nz,write
         ld      hl,txt_ramsearch
         call    print
         call    search_eeprom
-; Reenable interrupts that was disabled by RDSLT
-        ei
+
 ; if could not find the cartridge, exit with error message
         ld      hl,txt_ramnotfound
         jp      c,print
 ; Found writable memory therefore can continue writing the ROM into the eeprom
-instcall:
         push    af
         ld      hl,txt_ramfound
         call    print
@@ -136,11 +151,12 @@ instcall:
         pop     af  ; slot with ram is in (thisslt)
 ; read filename passed with DOS command line
 ; and update fcb with filename
-        call    resetfcb
-        call    readcliparms
+write:
+        ld      a,(thisslt)
+        call    disable_w_prot
         call    openfile
         cp      $ff
-        jr      z, fnotfounderr 
+        jp      z, fnotfounderr 
         call    setdma
         ld      a,(thisslt)
         ld      h,$40
@@ -155,7 +171,7 @@ writeeeprom:
         call    PUTCHAR
         call    readfileregister    ; read 1 block of data from disk
         cp      2
-        jr      nc,filereaderr      ; some error
+        jp      nc,filereaderr      ; some error
         ld      d,a                 ; save error in D for a while
         ld      a,h
         or      l
@@ -189,9 +205,80 @@ endofreading:
         ld      a,(RAMAD2)
         ld      h,$80
         call    ENASLT
+        ld      a,(thisslt)
+        call    enable_w_prot
         ld      hl,txt_advice
         call    print
         ei
+        ret
+
+; Search for the EEPROM
+search_eeprom:
+        ld      a,$FF
+        ld      (thisslt),a
+nextslot:
+         di
+         call    sigslot
+         cp      $FF
+         jr      z,endofsearch
+         ld      h,$40
+         call    ENASLT
+         call    testram
+         jr      c,nextslot
+         ld      a,(RAMAD1)
+         ld      h,$40
+         call    ENASLT
+         ld      a,(thisslt)   ; return the slot where eeprom was found
+         or      a
+         ret 
+endofsearch:
+         ld      a,(RAMAD1)
+         ld      h,$40
+         call    ENASLT
+         ld      a,$FF
+         scf
+         ret 
+
+testram:
+        ld      hl,$4000
+        ld      a,'A'
+        call    write_test
+        ret     c
+        ld      a,'T'
+        call    write_test
+        ret     c
+        ld      a,'C'
+        call    write_test
+        ret 
+
+write_test:
+        ld      b,a
+        ld      (hl),a
+        call    waitforwrite
+        ld      a,(hl)
+        inc     hl
+        cp      b
+        ret     z
+        scf
+        ret
+
+waitforwrite:
+        push    bc
+        ld      bc,300
+waitforwrite0:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,waitforwrite0
+        pop     bc
         ret
 
 fnotfounderr:
@@ -315,139 +402,6 @@ PRINTNEWLINE:
        pop      hl
        ret
 
-; ===============================================================
-; Get parameters from DOS CLI and parse to get file parameters
-; I extracted this part from an old MSX Book I have.
-; ===============================================================
-readcliparms:
-        ld      de,fcb
-        xor     a
-        ld      (de),a
-        ld      hl,dma+1
-        call    pulaesp
-        call    testacar
-        ld      c,a
-        inc     hl
-        ld      a,(hl)
-        dec     hl
-        cp      ':'
-        ld      a,c
-        jr      nz,lenome_ext
-        inc     hl
-        inc     hl
-; CLI paramaters contain drive specification
-; 0 = current
-; 1 = drive A
-; 2 = drive B and so on.
-        sub     $41
-        jr      c,espinval
-        inc     a
-        ld      (de),a
-        jr      lenome_ext
-espinval:
-        ld      a,$ff       ; invalid drive to force bdos to return error
-        ld      (de),a
-lenome_ext:
-        inc     de
-        ld      c,0
-        ld      b,8
-        call    lenome
-        ld      a,(hl)
-        cp      '.'
-        jr      nz,fimnome_ext
-        inc     hl
-        ld      b,3
-        call    lenome_0
-fimnome_ext:
-        ld      a,c
-        ret
-lenome:
-        call    testacar
-        jr      c,codesp
-        jr      z,codesp
-lenome_0:
-        call    testacar
-        jr      c,tstfimle
-        jr      z,tstfimle
-        inc     hl
-        inc     b
-        dec     b
-        jr      z,lenome_0
-        cp      '*'
-        jr      z,coringa
-        ld      (de),a
-        inc     de
-        dec     b
-        cp      '?'
-        jr      z,acheicor
-        jr      lenome_0
-coringa:
-        call    subscor
-acheicor:
-        ld      c,1
-codesp:
-        ld      a,e
-        add     a,b
-        ld      e,a
-        ret     nc
-        inc     d
-        ret
-tstfimle:
-        inc     b
-        dec     b
-        ret     z
-        ld      a,' '
-        jr      preenche
-subscor:
-        ld      a,'?'
-preenche:
-        ld      (de),a
-        inc     de
-        djnz    preenche
-        ret
-pulaesp:
-        ld      a,(hl)
-        inc     hl
-        call    testaesp
-        jr      z,pulaesp
-        dec     hl
-        ret
-testacar:
-        ld      a,(hl)
-        cp      'a'
-        jr      c,testacar_1
-        cp      $7b
-        jr      nc,testacar_1
-        sub     $20
-testacar_1: 
-        cp      ':'
-        ret     z
-        cp      '.'
-        ret     z
-        cp      $22
-        ret     z
-        cp      '['
-        ret     z
-        cp      ']'
-        ret     z
-        cp      '_'
-        ret     z
-        cp      '/'
-        ret     z
-        cp      '+'
-        ret     z
-        cp      '='
-        ret     z
-        cp      ';'
-        ret     z
-        cp      ','
-        ret     z
-testaesp:
-        cp      $09
-        ret     z
-        cp      ' '
-        ret
-
 resetfcb:
         ex    af,af'
         exx
@@ -463,75 +417,6 @@ resetfcb:
         ldir
         exx
         ex    af,af'
-        ret
-
-; Search for the EEPROM
-search_eeprom:
-        ld      a,$FF
-        ld      (thisslt),a
-nextslot:
-         di
-         call    sigslot
-         cp      $FF
-         jr      z,endofsearch
-         ld      h,$40
-         call    ENASLT
-         call    testram
-         jr      c,nextslot
-         ld      a,(RAMAD1)
-         ld      h,$40
-         call    ENASLT
-         ld      a,(thisslt)   ; return the slot where eeprom was found
-         or      a
-         ret 
-endofsearch:
-         ld      a,(RAMAD1)
-         ld      h,$40
-         call    ENASLT
-         ld      a,$FF
-         scf
-         ret 
-
-testram:
-        ld      hl,$4000
-        ld      a,'A'
-        call    write_test
-        ret     c
-        ld      a,'T'
-        call    write_test
-        ret     c
-        ld      a,'C'
-        call    write_test
-        ret 
-
-write_test:
-        ld      b,a
-        ld      (hl),a
-        call    waitforwrite
-        ld      a,(hl)
-        inc     hl
-        cp      b
-        ret     z
-        scf
-        ret
-
-waitforwrite:
-        push    bc
-        ld      bc,300
-waitforwrite0:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,waitforwrite0
-        pop     bc
         ret
 
 ; -------------------------------------------------------
@@ -582,35 +467,313 @@ sigslot:
     ld      a, $FF
     ret
 
+; ==============================================================
+parseargs:
+    ld      hl,$80
+    ld      a,(hl)
+    or      a
+    scf
+    ret     z
+    ld      c,a
+    ld      b,0
+    inc     hl
+    push    hl
+    add     hl,bc
+    ld      (hl),0   ; terminates the command line with zero
+    pop     hl
+ parse_next:
+    call    space_skip
+    ret     c
+    inc     hl
+    ld      de,parms_table
+    call    table_inspect
+    ret     c
+    ld      a,(parm_found)
+    or      a
+    jr      nz,parse_checkendofparms
+    pop     hl ; get form stack the address of the routine for this parameter
+    ld      de,parse_checkendofparms
+    push    de
+    jp      (hl)     ; jump to the routine for the parameter
+parse_checkendofparms:
+    ld      hl,(parm_address)
+    jr      parse_next
+
+param_h:
+    xor     a
+    ld      (ignorerc),a
+    ld      hl,txt_help
+    call    print
+    or      a
+    ret
+
+param_s:
+    ld      hl,(parm_address)
+    call    space_skip
+    ld      (parm_address),hl
+    ret     c
+    ld      a,(hl)
+    cp      '0'
+    ret     c
+    sub     '0'
+    ld      b,a
+    inc     hl
+    ld      (parm_address),hl
+    ld      a,(hl)
+    or      a
+    jr      z,param_s_end
+    cp      ' '
+    jr      z,param_s_end
+    cp      '0'
+    jr      c,param_s_end
+    ld      a,(hl)
+    inc     hl
+    ld      (parm_address),hl
+    sub     '0'
+    ld      c,a
+    ld      a,b
+    sla     a
+    sla     a
+    sla     a
+    sla     a
+    or      c
+    ld      b,a
+param_s_end:
+    ld      a,b
+    ld      (data_option_s),a
+    ld      (thisslt),a
+    ret
+
+param_f:
+    call    param_f_getfname
+    ld      hl,data_option_f
+    ld      de,fcb
+    ld      bc,12
+    ldir
+    ret
+
+param_f_getfname:
+    ld      hl,(parm_address) ; get current address in the bufer
+    call    space_skip
+    ld      (parm_address),hl
+    ld      a,(hl)
+    cp      '/'
+    ret     z
+    ld      de,data_option_f
+                              ;check if drive letter was passed
+    inc     hl
+    ld      a,(hl)
+    dec     hl
+    cp      ':'
+    ld      c,0
+    jr      nz,parm_f_a
+    ld      a,(hl)
+    inc     hl
+    inc     hl
+    cp      'a'
+    jr      c,param_is_uppercase
+    sub     'a'
+    jr      param_checkvalid
+param_is_uppercase:
+    sub     'A'
+param_checkvalid:
+    jr      c,param_invaliddrive
+    inc     a
+    ld      c,a
+    jr      parm_f_a
+param_invaliddrive:
+    ld      c,$ff             ; ivalid drive, BDOS will return error when called    
+parm_f_a:
+    ld      a,c
+    ld      (de),a            ; drive number
+    inc     de
+    ld      b,8               ; filename in format "filename.ext"
+    call    parm_f_0          ; get filename without extension
+    ld      b,3               ; filename in format "filename.ext"
+    ld      a,(hl)
+    cp      '.'
+    jr      nz,parm_f_b
+    inc     hl
+parm_f_b:
+    ld      (parm_address),a
+    call    parm_f_0          ; get extension
+    ret
+parm_f_0:
+    ld      a,(hl)
+    or      a
+    jr      z,parm_f_2
+    cp      '/'
+    jr      z,parm_f_2
+    cp      ' '
+    jr      z,parm_f_2
+    cp      '.'
+    jr      z,parm_f_2
+parm_f_1:
+    ld      (de),a
+    inc     hl
+    inc     de
+    djnz    parm_f_0
+    ld      (parm_address),hl
+    ret
+parm_f_2:
+    ld      a,' '
+    ld      (de),a
+    inc     de
+    djnz    parm_f_2
+    ld      (parm_address),hl
+    ret
+
+param_i:
+    xor     a
+    ld      (ignorerc),a
+    ret
+
+    ld      a,(data_option_s)
+    cp      $ff
+    jr      nz,param_i_show        ; received slot numnber from cli
+    ld      hl,txt_ramsearch
+    call    print
+    call    search_eeprom
+    ld      hl,txt_ramnotfound
+    ld      a,(thisslt)
+    cp      $ff
+    call    z,print
+    ld      a,(thisslt)
+param_i_show:
+    ld      h,$40
+    call    ENASLT
+    ld      hl,$4000
+    ld      b,16
+param_i_show0:
+    ld      a,(hl)
+    call    PRINTNUMBER
+    ld      a,' '
+    push    bc
+    call    PUTCHAR
+    pop     bc
+    inc     hl
+    djnz    param_i_show0
+    call    PRINTNEWLINE
+    ret
+
+param_l:
+    xor     a
+    ld      (ignorerc),a
+    ret
+
+    call    search_eeprom
+    ld      a,(thisslt)
+    ld      hl,txt_ramnotfound
+    cp      $ff
+    jp      z,print
+    ld      hl,txt_ramfound
+    call    print
+    ld      a,(thisslt)
+    call    PRINTNUMBER
+    ret
+
+; ================================================================================
+; table_inspect: get next parameters in the buffer and verify if it is valid
+; then return the address of the routine to process the parameter
+;
+; Inputs:
+; HL = address of buffer with parameters to parse, teminated in zero
+; Outputs:
+; HL = address of the buffer updated
+; Stack = address of the routine for the parameter
+; 
+
+table_inspect:
+    ld      a,$ff
+    ld      (parm_index),a
+    ld      (parm_found),a
+table_inspect0:
+    push    hl         ; save the address of the parameters
+table_inspect1:
+    ld      a,(hl)
+    cp      ' '
+    jr      z,table_inspect_cmp
+    or      a
+    jr      z,table_inspect_cmp
+    ld      c,a
+    ld      a,(de)
+    cp      c
+    jr      nz,table_inspect_next  ; not this parameters, get next in the table
+    inc     hl
+    inc     de
+    jr      table_inspect1
+table_inspect_cmp:
+    ld      a,(de)
+    or      a
+    jr      nz,table_inspect_next   ; not this parameters, check next in the table
+    inc     de
+    pop     af         ; discard HL to keep current arrgs index
+    xor     a
+    ld      (parm_found),a
+    ld      a,(de)
+    ld      c,a
+    inc     de
+    ld      a,(de)
+    ld      b,a
+    pop     de         ; get ret address out of the stack temporarily
+    push    bc         ; push the routine address in the stack
+    push    de         ; push the return addres of this routine back in the stack
+    ld      (parm_address),hl
+    scf
+    ccf
+    ret
+
+table_inspect_next:
+    ld      a,(de)
+    inc     de
+    or      a
+    jr      nz,table_inspect_next
+    ld      a,(parm_index)
+    inc     a
+    ld      (parm_index),a    ; this index will tell which parameter was found
+    pop     hl
+    inc     de
+    inc     de
+    ld      a,(de)
+    or      a
+    jr      nz,table_inspect0
+    ;ld      a,$ff
+    ;ld      (parm_index),a   ; parameter not found in the index
+    scf
+    ret
+
+; Skip spaces in the args.
+; Inputs: 
+; HL = memory address to start testing
+;
+; Outputs:
+; HL = updated memory address 
+; Flac C: set if found end of string (zero)
+;
+space_skip:
+    ld      a,(hl)
+    or      a
+    scf
+    ret     z
+    cp      ' '
+    scf
+    ccf
+    ret     nz
+    inc     hl
+    jr      space_skip
+
 ; ==================================================================
 ; Atmel AT28C256 Programming code
-; There SDP (software data protection) available in the eeprom.
-; However, I could not make it work on the MSX despite many efforts.
-; I believe the MSX is too slow to cope with the eeprom timing reqs.
-; I leave the code here for information and documentation purposes.
+; routinefor SDP (software data protection) available in the eeprom.
 ; ==================================================================
-; Disable write-protection
-disable_w_prot:
-        push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $20
-        ld      ($9555),a
-        call    waitforwrite
-        pop     af
-        ret
-
 ; Enable write-protection
 enable_w_prot:
         push    af
+        ld      h,$40
+        call    ENASLT
+        pop     af
+        ld      h,$80
+        call    ENASLT
         ld      a, $AA
         ld      ($9555),a     ; 0x5555 + 0x4000
         ld      a, $55
@@ -618,42 +781,164 @@ enable_w_prot:
         ld      a, $A0
         ld      ($9555),a     ; 0x5555 + 0x4000
         call    waitforwrite
-        pop     af
+        ld      a,(RAMAD1)
+        ld      h,$40
+        call    ENASLT
+        ld      a,(RAMAD2)
+        ld      h,$80
+        call    ENASLT
         ret
 
-enable_w_prot_final:
+; Disable write-protection
+disable_w_prot:
         push    af
-        ld      a, $AA
+        ld      h,$40
+        call    ENASLT
+        pop     af
+        ld      h,$80
+        call    ENASLT
+        ld      a,$AA
+        ld      ($9555),a 
+        ld      a,$55
+        ld      ($6AAA),a 
+        ld      a,$80
+        ld      ($9555),a 
+        ld      a,$AA
+        ld      ($9555),a 
+        ld      a,$55
+        ld      ($6AAA),a 
+        ld      a,$20
         ld      ($9555),a
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $A0
-        ld      ($9555),a 
-        ld      b,10
-waitloop:
         call    waitforwrite
-        djnz    waitloop
-        pop     af
+        ld      a,(RAMAD1)
+        ld      h,$40
+        call    ENASLT
+        ld      a,(RAMAD2)
+        ld      h,$80
+        call    ENASLT
         ret
 
-erase_chip:
+; Search for the EEPROM
+search_eeprom_:
+    di
+    call    sigslot
+    cp      $FF
+    jr      z,search_eeprom_end
+    ld      h,$40
+    call    ENASLT
+    ld      a,(thisslt)
+    ld      h,$80
+    call    ENASLT
+
+    call   save_tested_bytes      ; savem the address used to enable SDP
+    call   disable_w_prot
+    ;                             ; re-enable current slot for the memory tests
+    ld      a,(thisslt)
+    ld      h,$40
+    call    ENASLT
+    ld      a,(thisslt)
+    ld      h,$80
+    call    ENASLT
+    ;
+    call   compare_with_sdp_bytes ; compare ram with the sdp control bytes
+    jr     z,restore_bytes        ; if same, the ram is not ATC28C256 
+                                  ; the memory was not overwritten by sdp control bytes
+    call   test_for_ram           ; Now test if can write to the memory
+                                  ; since we potentially disabled SDP
+    jr     z,restore_slots        ; found the eeprom 
+                                  ; otherwise continue looking
+restore_bytes:
+    call   restore_tested_bytes   ; this slot is not AT28C256
+    jp     search_eeprom          ; test next slot
+
+restore_slots:
+    ld      a,(RAMAD1)
+    ld      h,$40
+    call    ENASLT
+    ld      a,(RAMAD2)
+    ld      h,$80
+    call    ENASLT
+    ei
+    ret 
+search_eeprom_end:
+    call     restore_slots
+    scf
+    ret
+
+save_tested_bytes:
+    ld     a,($9555)
+    ld     (eeprom_saved_bytes),a
+    ld     a,($6AAA)
+    ld     (eeprom_saved_bytes + 1),a
+    ret
+restore_tested_bytes:
+    ld     a,(eeprom_saved_bytes)
+    ld     ($9555),a
+    ld     a,(eeprom_saved_bytes + 1)
+    ld     ($6AAA),a
+    ret
+compare_with_sdp_bytes:
+    ld     hl,eeprom_saved_bytes
+    ld     a,($9555)
+    cp     (hl)
+    ret    z
+    inc    hl
+    ld     a,($6AAA)
+    cp     (hl)
+    ret
+
+; write 'ATC' to address $4000,4001,4002
+; Restore the original values before exiting the routine
+; C flag set if written value was not verified (that is, not RAM)
+;
+test_for_ram:
+    ld      hl,$4000
+    ld      a,(hl)
+    ld      b,a
+    ld      a,'A'
+    ld      (hl),a
+    inc     hl
+    ld      a,(hl)
+    ld      c,a
+    ld      a,'T'
+    ld      (hl),a
+    inc     hl
+    ld      a,(hl)
+    ld      d,a
+    ld      a,'C'
+    ld      (hl),a
+    call    wait_eeprom
+    ld      a,d
+    cp      (hl)
+    ret     nz
+    dec     hl
+    ld      a,c
+    cp      (hl)
+    ret     nz
+    dec     hl
+    ld      a,b
+    cp      (hl)
+    ret
+
+wait_eeprom:
+        push    bc
+        ld      bc,300
+wait_eeprom0:
         push    af
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $80
-        ld      ($9555),a 
-        ld      a, $AA
-        ld      ($9555),a 
-        ld      a, $55
-        ld      ($6AAA),a 
-        ld      a, $10
-        ld      ($9555),a 
-        call    waitforwrite
+        push    bc
+        push    de
+        push    hl
+        pop     hl
+        pop     de
+        pop     bc
         pop     af
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,wait_eeprom0
+        pop     bc
         ret
-; ==============================================================
+
 
 txt_ramsearch:   db      "Searching for EEPROM",13,10,0
 txt_ramfound:   db      "Found writable memory in slot ",0
@@ -667,11 +952,18 @@ txt_fnotfound: db "File not found",13,10,0
 txt_ffound: db "Reading file",13,10,0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile:   db "End of file",13,10,0
+
+txt_invparms: db "Invalid parameters",13,10,0
+txt_noparams: db "No command line parameters passed",13,10,0
+txt_parm_f: db "Filename:",13,10,0
+txt_exit: db "Returning to MSX-DOS",13,10,0
+txt_needfname: db "File name not specified",13,10,0
+txt_unprotecting: db "Disabling AT28C256 Software Data Protection on slot:",0
+txt_protecting: db "Enabling AT28C256 Software Data Protection on slot:",0
+txt_param_dx_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /dx",13,10,0
+txt_param_ex_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /ex",13,10,0
 txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
              db "(c) Ronivon Costa, 2020",13,10,13,10,0
-txt_invalidparms: db "Invalid parameters",13,10
-                  db "Must pass a slot number using two digits, for example:",13,10
-                  db "at28c256 02 game.rom",13,10,0
 txt_advice: db 13,10
             db "Write process completed",13,10
             db "==> ATTENTION <==",13,10
@@ -682,9 +974,41 @@ txt_sdp:    db "To force disabling the AT28C256 Software Data Protction (SDP),",
             db "Must specify two digits for the slot, as for example:",13,10
             db "at28csdp 01",13,10,13,10
             db "Afterwards, you can use verrom.com to verify if the SDP was correctly disable.",13,10,0
+txt_help: db "EEPROM AT28C256 Programmer for MSX v1.0",13,10
+          db "Format: at28c256 </options> file.rom",13,10,13,10
+          db "/h Show this help",13,10
+          db "/l Locate (search) for the AT28C256 cartridge accross all slots",13,10
+          db "/s <slot number> (must be 2 digits)",13,10
+          db "/i Show initial 256 byets of the slot cartridge",13,10
+          db "/f File name with extension, for example game.rom",13,10
+          db 0
+
+parms_table:
+    db "h",0
+    dw param_h
+    db "help",0
+    dw param_h
+    db "i",0
+    dw param_i
+    db "s",0
+    dw param_s
+    db "f",0
+    dw param_f
+    db "l",0
+    dw param_l
+    db 0
 
 thisslt: db $FF
 curraddr: dw $0000
+parm_index: db $ff
+parm_found: db $ff
+ignorerc:   db $ff
+parm_address: dw 0000
+data_option_s: db $ff
+data_option_f: db $ff,0,0,0,0,0,0,0,0,0,0,0
+               db 0
+
+eeprom_saved_bytes:  db 0,0,0
 
 fcb:
 ; reference: https://www.msx.org/wiki/FCB    

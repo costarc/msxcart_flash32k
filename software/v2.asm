@@ -626,51 +626,72 @@ parm_f_2:
 param_i:
     xor     a
     ld      (ignorerc),a
-    ret
 
     ld      a,(data_option_s)
     cp      $ff
     jr      nz,param_i_show        ; received slot numnber from cli
-    ld      hl,txt_ramsearch
-    call    print
-    call    search_eeprom
-    ld      hl,txt_ramnotfound
-    ld      a,(thisslt)
-    cp      $ff
-    call    z,print
-    ld      a,(thisslt)
+; Search for the EEPROM for at28show command
+search_cart:
+        ld      a,$FF
+        ld      (thisslt),a
+search_cart0:
+         di
+         call    sigslot
+         cp      $FF
+         jr      z,search_cart_end
+         ld      h,$40
+         call    ENASLT
+         call    test_cart
+         jr      c,search_cart0
+         call    showcontent
+         jr      search_cart0
+
+search_cart_end:
+         ld      a,(RAMAD1)
+         ld      h,$40
+         call    ENASLT
+         ld      a,$FF
+         scf
+         ret
+
 param_i_show:
-    ld      h,$40
-    call    ENASLT
-    ld      hl,$4000
-    ld      b,16
-param_i_show0:
-    ld      a,(hl)
-    call    PRINTNUMBER
-    ld      a,' '
-    push    bc
-    call    PUTCHAR
-    pop     bc
-    inc     hl
-    djnz    param_i_show0
-    call    PRINTNEWLINE
-    ret
+         ld      a,(thisslt)
+         ld      h,$40
+         call    ENASLT
+         call    showcontent
+         ld      a,(RAMAD1)
+         ld      h,$40
+         call    ENASLT
+         ret
 
-param_l:
-    xor     a
-    ld      (ignorerc),a
-    ret
+test_cart:
+        ld      a,($4000)
+        cp      'A'
+        scf
+        ret     nz
+        ld      a,($4001)
+        cp      'B'
+        ret     Z
+        SCF
+        ret
 
-    call    search_eeprom
-    ld      a,(thisslt)
-    ld      hl,txt_ramnotfound
-    cp      $ff
-    jp      z,print
-    ld      hl,txt_ramfound
-    call    print
-    ld      a,(thisslt)
-    call    PRINTNUMBER
-    ret
+showcontent:
+        ld      a,(thisslt)
+        call    PRINTNUMBER
+        call    PRINTNEWLINE
+        ld      hl,$4000
+        ld      b,16
+showcontent0:
+        ld      a,(hl)
+        call    PRINTNUMBER
+        ld      a,' '
+        push    bc
+        call    PUTCHAR
+        pop     bc
+        inc     hl
+        djnz    showcontent0
+        call    PRINTNEWLINE
+        ret
 
 ; ================================================================================
 ; table_inspect: get next parameters in the buffer and verify if it is valid
@@ -977,7 +998,6 @@ txt_sdp:    db "To force disabling the AT28C256 Software Data Protction (SDP),",
 txt_help: db "EEPROM AT28C256 Programmer for MSX v1.0",13,10
           db "Format: at28c256 </options> file.rom",13,10,13,10
           db "/h Show this help",13,10
-          db "/l Locate (search) for the AT28C256 cartridge accross all slots",13,10
           db "/s <slot number> (must be 2 digits)",13,10
           db "/i Show initial 256 byets of the slot cartridge",13,10
           db "/f File name with extension, for example game.rom",13,10
@@ -994,8 +1014,6 @@ parms_table:
     dw param_s
     db "f",0
     dw param_f
-    db "l",0
-    dw param_l
     db 0
 
 thisslt: db $FF

@@ -1,6 +1,6 @@
 ;|===========================================================================|
 ;|                                                                           |
-;| AT28C256 Programmer for MSX                                               |
+;| MSX Software for Cartridge AT28C256 32K EEPROM                            |
 ;|                                                                           |
 ;| Version : 1.0                                                             |
 ;|                                                                           |
@@ -20,13 +20,13 @@
 ;| the Free Software Foundation, either version 3 of the License, or         |
 ;| (at your option) any later version.                                       |
 ;|                                                                           |
-;| msxcart_flash32k is distributed in the hope that it will be useful,       |
+;| MSX PI Interface is distributed in the hope that it will be useful,       |
 ;| but WITHOUT ANY WARRANTY; without even the implied warranty of            |
 ;| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             |
 ;| GNU General Public License for more details.                              |
 ;|                                                                           |
 ;| You should have received a copy of the GNU General Public License         |
-;| along with msxcart_flash32k.  If not, see <http://www.gnu.org/licenses/>. |
+;| along with MSX PI Interface.  If not, see <http://www.gnu.org/licenses/>. |
 ;|===========================================================================|
 ;
 ; Compile this file with z80asm:
@@ -982,10 +982,8 @@ wait_eeprom0:
     txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
     db "(c) Ronivon Costa, 2020",13,10,13,10,0
     txt_advice: db 13,10
-    db "Write process completed",13,10
-    db "==> ATTENTION <==",13,10
-    db "Switch off the MSX immediately, remove the interface, then remove the /wr jumper"
-    db 13,10,0
+    db "Write process completed",13,10,0
+
     txt_sdp:    db "To force disabling the AT28C256 Software Data Protction (SDP),",13,10
     db "call this program passing the slot as parameter.",13,10
     db "Must specify two digits for the slot, as for example:",13,10

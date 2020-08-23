@@ -138,6 +138,9 @@ write:
     push    af
     ld      hl,txt_ffound
     call    print
+    ld      hl,fcb+1
+    call    PRINTFCBFNAME
+    call    PRINTNEWLINE
     ld      hl,txt_writingflash
     call    print
     pop     af
@@ -410,6 +413,27 @@ PRINTNEWLINE:
     ld       hl,txt_newline
     call     print
     pop      hl
+    ret
+
+;-------------------------------------------
+; print file name from FCB properly parsed |
+;-------------------------------------------
+PRINTFCBFNAME:
+    ld       b,8
+    call     PRINTFCBFNAME2
+    ld       a,'.'
+    call     PUTCHAR
+    ld       b,3
+    call     PRINTFCBFNAME2
+    ret
+PRINTFCBFNAME2:
+    ld       a,(hl)
+    inc      hl
+    cp       ' '
+    jr       z,PRINTFCBFNAME3
+    call     PUTCHAR
+PRINTFCBFNAME3:
+    djnz     PRINTFCBFNAME2
     ret
 
 resetfcb:
@@ -838,9 +862,6 @@ param_f:
     ld      de,fcb
     ld      bc,12
     ldir
-
-    ld  hl,fcb
-    call print
     ret
 
 param_f_getfname:
@@ -1050,7 +1071,7 @@ txt_completed: db "Completed.",13,10,0
 txt_nofn: db "Filename is empty or not valid",13,10,0
 txt_fileopenerr: db "Error opening file",13,10,0
 txt_fnotfound: db "File not found",13,10,0
-txt_ffound: db "Reading file from disk",13,10,0
+txt_ffound: db "Reading file from disk:",0
 txt_err_reading: db "Error reading data from file",13,10,0
 txt_endoffile: db "End of file",13,10,0
 txt_noparams: db "No command line parameters passed",13,10,0

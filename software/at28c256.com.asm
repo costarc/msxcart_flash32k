@@ -2,7 +2,7 @@
 ;|                                                                           |
 ;| MSX Software for Cartridge AT28C256 32K EEPROM                            |
 ;|                                                                           |
-;| Version : 1.0                                                             |
+;| Version : 1.1                                                             |
 ;|                                                                           |
 ;| Copyright (c) 2020 Ronivon Candido Costa (ronivon@outlook.com)            |
 ;|                                                                           |
@@ -146,18 +146,14 @@ write:
 
                                 ; read filename passed with DOS command line
                                 ; and update fcb with filename
-    ld      a,(thisslt)
+    call    enable_eeprom_slots
     call    disable_w_prot
+    call    restore_ram_slots
     call    openfile
     cp      $ff
     jp      z, fnotfounderr 
     call    setdma
-    ld      a,(thisslt)
-    ld      h,$40
-    call    ENASLT
-    ld      a,(thisslt)
-    ld      h,$80
-    call    ENASLT
+    call    enable_eeprom_slots
     ld      de,$4000
     ld      (curraddr),de
 writeeeprom:
@@ -192,18 +188,37 @@ writeeeprom0:
     cp      1                       ; 1 = this was last record.
     jr      z,endofreading   
     jr      writeeeprom
+
 endofreading:
+    call    enable_w_prot
+    call    restore_ram_slots
+
+    ld      a,(data_option_p)
+    cp      1
+    call    z,param_p_patch_rom
+    
+    ld      hl,txt_advice
+    call    print
+
+    ei
+    ret
+
+enable_eeprom_slots:
+    ld      a,(thisslt)
+    ld      h,$40
+    call    ENASLT
+    ld      a,(thisslt)
+    ld      h,$80
+    call    ENASLT
+    ret
+
+restore_ram_slots:
     ld      a,(RAMAD1)
     ld      h,$40
     call    ENASLT
     ld      a,(RAMAD2)
     ld      h,$80
     call    ENASLT
-    ld      a,(thisslt)
-    call    enable_w_prot
-    ld      hl,txt_advice
-    call    print
-    ei
     ret
 
     ; Search for the EEPROM
@@ -693,6 +708,57 @@ showcontent0:
     call    PRINTNEWLINE
     ret
 
+param_p:
+    ld     a,1
+    ld     (data_option_p),a
+    ret
+
+param_p_patch_rom:
+    ld     hl,txt_patching_rom
+    call   print
+
+    call   wait_eeprom
+    call   enable_eeprom_slots
+    call   disable_w_prot
+    call   wait_eeprom
+
+    ld     hl,($4002)
+    ld     (param_p_jump + 1),hl
+    ld     hl,$8000 - (parap_p_end - param_p_patch)
+    LD     ($4002),hl
+
+    call   wait_eeprom
+    call   wait_eeprom
+
+    ld     bc,parap_p_end - param_p_patch
+    ld     hl,param_p_patch
+    ld     de,$8000 - (parap_p_end - param_p_patch)
+param_p_patch_rom_wloop:
+    ld     a,(hl)
+    ld     (de),a
+    inc    hl
+    inc    de
+    dec    bc
+    ld     a,b
+    or     c
+    jr     nz,param_p_patch_rom_wloop
+
+    call    wait_eeprom
+    call    enable_w_prot
+    call    restore_ram_slots
+    ret
+
+param_p_patch:
+    ld    a,7
+    call  $0141
+    bit   2,a
+    ret   z
+param_p_jump:
+    jp    $0000
+
+parap_p_end: equ $
+
+ROM_NEW_INIT: EQU $400A
 ; ================================================================================
 ; table_inspect: get next parameters in the buffer and verify if it is valid
 ; then return the address of the routine to process the parameter
@@ -787,12 +853,6 @@ space_skip:
 ; ==================================================================
 ; Enable write-protection
 enable_w_prot:
-    push    af
-    ld      h,$40
-    call    ENASLT
-    pop     af
-    ld      h,$80
-    call    ENASLT
     ld      a, $AA
     ld      ($9555),a     ; 0x5555 + 0x4000
     ld      a, $55
@@ -800,22 +860,10 @@ enable_w_prot:
     ld      a, $A0
     ld      ($9555),a     ; 0x5555 + 0x4000
     call    waitforwrite
-    ld      a,(RAMAD1)
-    ld      h,$40
-    call    ENASLT
-    ld      a,(RAMAD2)
-    ld      h,$80
-    call    ENASLT
     ret
 
 ; Disable write-protection
 disable_w_prot:
-    push    af
-    ld      h,$40
-    call    ENASLT
-    pop     af
-    ld      h,$80
-    call    ENASLT
     ld      a,$AA
     ld      ($9555),a 
     ld      a,$55
@@ -829,12 +877,6 @@ disable_w_prot:
     ld      a,$20
     ld      ($9555),a
     call    waitforwrite
-    ld      a,(RAMAD1)
-    ld      h,$40
-    call    ENASLT
-    ld      a,(RAMAD2)
-    ld      h,$80
-    call    ENASLT
     ret
 
 ; Search for the EEPROM
@@ -979,7 +1021,8 @@ wait_eeprom0:
     txt_protecting: db "Enabling AT28C256 Software Data Protection on slot:",0
     txt_param_dx_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /dx",13,10,0
     txt_param_ex_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /ex",13,10,0
-    txt_credits: db "AT28C256 EEPROM Programmer for MSX",13,10
+    txt_patching_rom: DB 13,10,"Patching ROM. Use ESC to bypass ROM boot",13,10,0
+    txt_credits: db "AT28C256 EEPROM Programmer for MSX v1.1",13,10
     db "(c) Ronivon Costa, 2020",13,10,13,10,0
     txt_advice: db 13,10
     db "Write process completed",13,10,0
@@ -994,6 +1037,7 @@ wait_eeprom0:
     db "/h Show this help",13,10
     db "/s <slot number>",13,10
     db "/i Show initial 24 bytes of the slot cartridge",13,10
+    db "/p Patch rom to skip boot when pressing ESC (Dangerous)",13,10,0
     db "/f File name with extension, for example game.rom",13,10,0
 
 parms_table:    
@@ -1005,6 +1049,8 @@ parms_table:
     dw param_i
     db "s",0
     dw param_s
+    db "p",0
+    dw param_p
     db "f",0
     dw param_f
     db 0                ; end of table. this byte is mandatory to be zero
@@ -1015,6 +1061,7 @@ parm_found:     db $ff
 ignorerc:       db $ff
 data_option_s:  db $ff
 data_option_f:  db $ff,0,0,0,0,0,0,0,0,0,0,0,0
+data_option_p:  db $ff
 parm_address:   dw 0000
 curraddr:       dw 0000
 eeprom_saved_bytes:  db 0,0,0

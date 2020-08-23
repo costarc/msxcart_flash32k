@@ -493,7 +493,7 @@ parseargs:
     pop     hl
 parse_next:
     call    space_skip
-    ret     c
+    jr      c,parse_filename
     inc     hl
     ld      de,parms_table
     call    table_inspect
@@ -514,26 +514,37 @@ parse_checkendofparms:
 ; if filename was provided without the "/f" option. However, /if "/f" had
 ; already been provided, will simply ignore en exit this routine.
 parse_filename:
-
     ld      a,(data_option_f)
     cp      $ff
     ret     nz
 	ld      hl,$81
 parse_filename1:
 	call    space_skip
+    ld      (parm_address),hl
 	ld      a,(hl)
 	or      a
 	ret     z
 	cp      '/'
-	jp       nz,parm_f
-parse_filename2
+	jp       z,parse_skip_slash_parm
+    xor      a
+    ld      (parm_found),a
+    jp      param_f
+parse_skip_slash_parm:
 	inc     hl
 	ld      a,(hl)
 	or      a
 	ret     z
 	cp      ' '
-	jr      z,parse_filename1
-	jr      parse_filename2
+	jr      nz,parse_skip_slash_parm
+parse_skip_parv_value:
+    inc     hl
+    ld      a,(hl)
+    or      a
+    ret     z
+    cp      ' '
+    jr      nz,parse_skip_parv_value
+    jr      parse_filename1
+
 
 ; ================================================================================
 ; table_inspect: get next parameters in the buffer and verify if it is valid
@@ -827,6 +838,9 @@ param_f:
     ld      de,fcb
     ld      bc,12
     ldir
+
+    ld  hl,fcb
+    call print
     ret
 
 param_f_getfname:
@@ -1059,7 +1073,7 @@ db "Must specify two digits for the slot, as for example:",13,10
 db "at28csdp 01",13,10,13,10
 db "Afterwards, you can use verrom.com to verify if the SDP was correctly disable.",13,10,0
 txt_invparms: db "Invalid parameters",13,10
-txt_help: db "Command line options: at28c256 </h | /i> </s /f file.rom>",13,10,13,10
+txt_help: db "Command line options: at28c256 </h | /i> | </s <slot> </f> file.rom>",13,10,13,10
 db "/h Show this help",13,10
 db "/s <slot number>",13,10
 db "/i Show initial 24 bytes of the slot cartridge",13,10

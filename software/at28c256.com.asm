@@ -35,6 +35,7 @@
 ; File history :
 ; 1.0  - 27/06/2020 : initial version
 ;        05/08/2020 : Revised version
+; 1.1  - 24/08/2020 : Improved parsing of filename
 ;
 ; Note on this code:
 ; This version does not identify the AT28C256 automatically.
@@ -541,33 +542,25 @@ parse_filename:
     ld      a,(data_option_f)
     cp      $ff
     ret     nz
-	ld      hl,$81
+    ld      hl,$80
+    ld      a,(hl)
+    cp      2
+    ret     c
 parse_filename1:
-	call    space_skip
-    ld      (parm_address),hl
-	ld      a,(hl)
-	or      a
-	ret     z
-	cp      '/'
-	jp       z,parse_skip_slash_parm
-    xor      a
-    ld      (parm_found),a
-    jp      param_f
-parse_skip_slash_parm:
-	inc     hl
-	ld      a,(hl)
-	or      a
-	ret     z
-	cp      ' '
-	jr      nz,parse_skip_slash_parm
-parse_skip_parv_value:
     inc     hl
     ld      a,(hl)
     or      a
-    ret     z
-    cp      ' '
-    jr      nz,parse_skip_parv_value
-    jr      parse_filename1
+    jr      nz,parse_filename1
+parse_filename2:
+    dec     hl
+    ld      a,(hl)
+    cp      ' ' 
+    jr      nz,parse_filename2
+    inc     hl
+    ld      (parm_address),hl
+    xor      a
+    ld      (parm_found),a
+    jp      param_f
 
 
 ; ================================================================================

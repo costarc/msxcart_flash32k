@@ -255,51 +255,34 @@ A13
 Text GLabel 4000 3350 0    50   Input ~ 0
 mem_A14
 Text Notes 8200 7650 0    50   ~ 0
-05/08/2020
+25/08/2020
 Text Notes 7350 7500 0    50   ~ 0
 MSX AT28C256 EEPROM Programable Cartridge
 Text Notes 7050 6700 0    50   ~ 0
 Ronivon Costa
-Text GLabel 3050 4300 0    50   Input ~ 0
-cs1
-Text GLabel 3050 4500 0    50   Input ~ 0
+Text GLabel 3050 5750 0    50   Input ~ 0
 cs12
-Text GLabel 3050 4400 0    50   Input ~ 0
+Text GLabel 3050 5650 0    50   Input ~ 0
 cs2
-Text GLabel 3050 4600 0    50   Input ~ 0
+Text GLabel 3050 5850 0    50   Input ~ 0
 wr
-Text GLabel 3550 4300 2    50   Input ~ 0
-mem_oe
-Text GLabel 3050 4700 0    50   Input ~ 0
-A14
-Text GLabel 3050 4800 0    50   Input ~ 0
-A15
-Text GLabel 3550 4700 2    50   Input ~ 0
+Text GLabel 3550 5350 2    50   Input ~ 0
 mem_A14
-Text GLabel 3550 4900 2    50   Input ~ 0
-mem_ce
-Text GLabel 3050 4900 0    50   Input ~ 0
+Text GLabel 3050 5250 0    50   Input ~ 0
 sltsl
 Text GLabel 4000 1650 0    50   Input ~ 0
 mem_ce
 $Comp
 L Connector_Generic:Conn_02x07_Odd_Even J1
 U 1 1 5EFE8625
-P 3250 4600
-F 0 "J1" H 3300 5117 50  0000 C CNN
-F 1 "Conn_02x07_Odd_Even" H 3300 5026 50  0000 C CNN
-F 2 "Connector_PinHeader_2.54mm:PinHeader_2x07_P2.54mm_Horizontal" H 3250 4600 50  0001 C CNN
-F 3 "~" H 3250 4600 50  0001 C CNN
-	1    3250 4600
+P 3250 5550
+F 0 "J1" H 3300 6067 50  0000 C CNN
+F 1 "Conn_02x07_Odd_Even" H 3300 5976 50  0000 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_2x07_P2.54mm_Horizontal" H 3250 5550 50  0001 C CNN
+F 3 "~" H 3250 5550 50  0001 C CNN
+	1    3250 5550
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	3550 4500 3550 4400
-Wire Wire Line
-	3550 4300 3550 4400
-Connection ~ 3550 4400
-Wire Wire Line
-	3550 4700 3550 4800
 $Comp
 L Device:CP C2
 U 1 1 5F2DB013
@@ -345,7 +328,7 @@ F 3 "~" H 5750 4250 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	5750 4400 5950 4400
-Text GLabel 3550 4600 2    50   Input ~ 0
+Text GLabel 3550 5850 2    50   Input ~ 0
 mem_we
 $Comp
 L power:+5V #PWR06
@@ -374,7 +357,7 @@ Wire Wire Line
 Text GLabel 5950 5050 2    50   Input ~ 0
 mem_ce
 Text Notes 10600 7650 0    50   ~ 0
-3
+4
 Text GLabel 5950 5700 2    50   Input ~ 0
 mem_oe
 $Comp
@@ -401,4 +384,21 @@ F 3 "" H 5750 5400 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	5750 5700 5950 5700
+Text GLabel 3050 5550 0    50   Input ~ 0
+cs1
+Text GLabel 3050 5450 0    50   Input ~ 0
+A15
+Text GLabel 3050 5350 0    50   Input ~ 0
+A14
+Text GLabel 3550 5250 2    50   Input ~ 0
+mem_ce
+Text GLabel 3550 5550 2    50   Input ~ 0
+mem_oe
+Wire Wire Line
+	3550 5450 3550 5350
+Wire Wire Line
+	3550 5650 3550 5750
+Wire Wire Line
+	3550 5650 3550 5550
+Connection ~ 3550 5650
 $EndSCHEMATC

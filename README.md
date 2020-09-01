@@ -13,23 +13,27 @@ Protecion (SDP), the auto detection only works if the SDP was previously disable
 Make sure the EEPROM SDP has not been enabled by other means, as for example,
 using an external EPROM programmer.
 
-Another better option is to pass an command line parameters indicting the
-MSX SLOT where the EEPROM is plugged, for example:
+Another way to successfully program the EERPNO is to pass a command line parameter /s indicting the MSX SLOT where the EEPROM is connected, for example:
 
 at28c256.com /s 1 /f game.rom
 
-There is also a parameter ot help identify the slot:
+There is also a parameter ot help identify the slot, but it does not work when the EEPROMis already write protected:
+
 at28c256 /i
 
-How to operate and write protect the eeprom against undesirable writes:
-The softwre should enable the SDP after writing the rom. However, to enable
-a phisycal protection in cases where the EEPROM will not be re-writed 
-constantly, use the following steps:
+How to write a ROM to the EEPROM:
+=================================
 
-1. Put jumper /wr in the interface
-2. Plug the interface on the MSX and switch it on
-3. Write the ROM to the EEPROM, for example: "at28c256 /s 1 /f galaga.rom"
-4. Switch off MSX and remove the interface
-5. Remove the /wr Jumper
-6. Plug the interface on the MSX and switch it on. Will boot into the game.
+Note: Do not remove jumper WR. It should be closed at all times. Move only the other 2 jumpers around following the steps below.
+
+1. Close these jumpers: CS12, A15
+2. Use at28c256.com /s <slot> /f <file.rom> to program the EEPROM
+
+If the EEPROM is 32KB, it is ready to boot. Simply restart the MSX.
+
+If you programmed two banks (let's say, 2 x 16KB games), you can boot each bank switching jumpers as follows:
+
+- Close Jumpers CS1, A15 to boot Bank 1
+- Close Jumpers CS1, A14 to boot Bank 2
+
 

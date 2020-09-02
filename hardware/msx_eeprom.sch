@@ -357,7 +357,7 @@ Wire Wire Line
 Text GLabel 5950 5050 2    50   Input ~ 0
 mem_ce
 Text Notes 10600 7650 0    50   ~ 0
-4
+5
 Text GLabel 5950 5700 2    50   Input ~ 0
 mem_oe
 $Comp

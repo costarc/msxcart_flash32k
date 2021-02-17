@@ -28,7 +28,7 @@ Note: Do not remove jumper WR. It should be closed at all times. Move only the o
 To by-pass the cartridge ROM when it is connected in a slot, remove jumper CS1/CS2/CS12. Insert the jumper back on once the MSX has booted.
 
 1. Close these jumpers: CS12, A15, WR, SLTSL
-2. Use at28c256.com /s <slot> /f <file.rom> to program the EEPROM
+2. Use at28c256.com /s slot /f filename.rom to program the EEPROM
 
 If the EEPROM is 32KB, it is ready to boot. Simply restart the MSX.
 

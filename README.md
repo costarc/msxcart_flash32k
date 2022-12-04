@@ -44,6 +44,14 @@ PCB Revision 0 (with 6 jumpers):
 PCB Revision 0 with an extra jumper wired up for SLTSL:
 Use the same steps described for Revison 1 above.
 
+
+Boot from the EEPROM
+=====================
+
+To boot from the cart, just reboot the MSX.
+If you burned 2 ROMs, you can switch between them by moving the jumper between A15 and A14.
+
+
 Notes:
 =====
 

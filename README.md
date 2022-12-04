@@ -13,54 +13,47 @@ Protecion (SDP), the auto detection only works if the SDP was previously disable
 Make sure the EEPROM SDP has not been enabled by other means, as for example,
 using an external EPROM programmer.
 
-Another way to successfully program the EEPROM is to pass a command line parameter /s indicting the MSX SLOT where the EEPROM is connected, for example:
+The programmer need the slot number where the EEPROM is inserted. You may need to guess the slot (usually it will be 1 or 2),
+but for EEPROMs that were previously programmed, it will be displayed using the command:
 
-at28c256.com /s 1 /f game.rom
+at28c256.com /i
 
-There is also a parameter ot help identify the slot, but it does not work when the EEPROMis already write protected:
 
-at28c256 /i
+Note that the slot 1 may not be the top slot in some MSXs. For example, the Canon V-25 slot 1 in on the bottom left side of the micro.
 
 How to write a ROM to the EEPROM:
 =================================
 
+PCB Revision 1
 
-Revision 0:
+1. Close jumpers WR, A15, CS12. All others must be Open
+2. Boot the MSX
+3. Now close also jumper SLTSL (top jumper)
+4. Try to identify the slot where the cartridge is connected with parameter "/i". See Note 1 below.
+4. Write the ROM passing the correct slot number in the "/s" parameter, for example: at28c256 /s 1 /f roadfighter.rom)
+
+PCB Revision 0 (with 6 jumpers):
 
 1. Close jumpers WR, A15. All others must be Open
 2. Boot the MSX
-3. Close jumper CS12
+3. Now close also jumper CS12
 4. Try to identify the slot where the cartridge is connected with parameter "/i". See Note 1 below.
-
-4. Write the ROM (ex: at28c256 /s 1 /f roadfighter.rom)
-
+4. Write the ROM passing the correct slot number in the "/s" parameter, for example: at28c256 /s 1 /f roadfighter.rom)
 
 
-Note 1: Use "at28c256 /i" to check if the EEPROM slot can be located. 
+PCB Revision 0 with an extra jumper wired up for SLTSL:
+Use the same steps described for Revison 1 above.
+
+Notes:
+=====
+
+1: Use "at28c256 /i" to check if the EEPROM slot can be located. 
 If there was a previous ROM in the EEPROM, it will be identified  and shown with the initial bytes "41 42". Note that
 all other internal expanded slots with some ROM will also be displayed, but with high slot numbers. 
 If there was not any ROM previously recorded in your EEPROM, you may need to guess the slot number.
-The external MSX slots will usually be identified by low numbers such as 01 and 02. Try using parameters "/s 1" or "/s 2" with the at28c256 command in these cases where the EEPROM is not located.
 
+2: The external MSX slots will usually be identified by low numbers such as 01 and 02. Try using parameters "/s 1" or "/s 2" with the at28c256 command to program the EEPROM in these cases where the EEPROM is not located and you have to guess the slot number.
 
-Note: Do not remove jumper WR. It should be closed at all times. Move only the other 2 jumpers around following the steps below.
-To by-pass the cartridge ROM when it is connected in a slot, remove jumper CS1/CS2/CS12. Insert the jumper back on once the MSX has booted.
+3: Do not remove jumper WR. It should be closed at all times. Write protect is enabled by software by the at28c256.com program.
 
-1. Close these jumpers: CS12, A15, WR, SLTSL
-2. Program the EERPOM: at28c256.com /s slot /f filename.rom
-
-If the EEPROM is 32KB, it is ready to boot. Simply restart the MSX.
-
-If you programmed two banks (let's say, 2 x 16KB games), you can boot each bank switching jumpers as follows:
-
-Revison 0:
-
-Bank 1: Close jumpers CS12, WR, A14
-Bank 2: Close jumpers CS12, WR, A15
-
-Revision 1:
-
-Bank 1: Close Jumpers CS1, WR, A15
-Bank 2: Close Jumpers CS1, WR, A14
-
-
+4: To by-pass the cartridge ROM when it is connected in a slot, remove jumper SLTSL (Revision 1) or CS12 in Revision 0. Insert the jumper back on once the MSX has booted, otherwise the EEPROM will not be enabled for MSX to program it.

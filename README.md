@@ -25,6 +25,24 @@ How to write a ROM to the EEPROM:
 =================================
 
 
+Revision 0:
+
+1. Close jumpers WR, A15. All others must be Open
+2. Boot the MSX
+3. Close jumper CS12
+4. Try to identify the slot where the cartridge is connected with parameter "/i". See Note 1 below.
+
+4. Write the ROM (ex: at28c256 /s 1 /f roadfighter.rom)
+
+
+
+Note 1: Use "at28c256 /i" to check if the EEPROM slot can be located. 
+If there was a previous ROM in the EEPROM, it will be identified  and shown with the initial bytes "41 42". Note that
+all other internal expanded slots with some ROM will also be displayed, but with high slot numbers. 
+If there was not any ROM previously recorded in your EEPROM, you may need to guess the slot number.
+The external MSX slots will usually be identified by low numbers such as 01 and 02. Try using parameters "/s 1" or "/s 2" with the at28c256 command in these cases where the EEPROM is not located.
+
+
 Note: Do not remove jumper WR. It should be closed at all times. Move only the other 2 jumpers around following the steps below.
 To by-pass the cartridge ROM when it is connected in a slot, remove jumper CS1/CS2/CS12. Insert the jumper back on once the MSX has booted.
 

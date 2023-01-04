@@ -1,0 +1,52 @@
+MSX flash_cart PCB Rev 0
+========================
+
+https://github.com/costarc/msxcart_flash32k/
+
+
+Jumpers in J1 (from top to bottom):
+---- CS1
+---- CS2
+---- CS12
+---- /WR
+---- A14
+---- A15
+
+
+To write the EEPROM
+
+
+Download the programmer AT28C256.COM from github repository and save it to your MSX disk.
+https://github.com/costarc/msxcart_flash32k/tree/master/software
+
+
+Note: If any of the chip select jumpers are closed, the MSX will boot from the EEPROM.
+To re-write the EEPROM, therefore you must remove those jumpers (CS1,CS2,CS12).
+
+Follow this process:
+1. Remove CS1,CS2,CS12 (either that is connected)
+2. Put on jumpers WR, A15
+3. Boot the MSX with the EEPROM cart inserted in the MSX slot
+4. Put on the jumper CS12
+
+Now you ready to write the ROM.
+
+Try to identify the slot where the cartridge is connected passig parameter "/i" to AT28C256.COM.
+Slots with high numbers, such as 82,83, etc are probably form your MSX extended ROMs - you cannot use these values with AT28C256.COM.
+
+Write the ROM passing the correct slot number in the "/s" parameter, for example: at28c256 /s 1 /f roadfighter.rom)
+The progress is shown in the screen, and it should take only a few seconds to complete.
+
+To boot from the EEPROM, just reboot the MSX.
+If you burned 2 ROMs, you can switch between them by moving the jumper between A15 and A14.
+
+You can join two ROMS to make a single ROM to write to the EEPROM.
+In a Linux or Mac OS system, this command will do the trick:
+
+cat game1.rom >  big.rom
+cat game2.rom >> big.rom
+
+For a Windows/DOS system, you should use something like this:
+copy /b game1.rom+game2.rom big.rom
+
+

@@ -133,7 +133,7 @@ RAMAD3:         EQU     $F344       ; slotid DOS ram page 3
 write:
     
     call		testEpromWrite
-    jr			c,notEprom							; did not find the EEPROM
+    jp			c,notEprom							; did not find the EEPROM
     
     ; given the slot passed in command line,
     ; verify if it is expanded and added the final slot configuration to expandedslt
@@ -156,28 +156,33 @@ write:
 
                                 ; read filename passed with DOS command line
                                 ; and update fcb with filename
-	ld		a,(thisslt)
-    call    enable_eeprom_slot  
-    call    disable_w_prot
-    call    restore_ram_slots
-    call    openfile
-    cp      $ff
-    jp      z, fnotfounderr 
-    call    setdma
-    call    enable_eeprom_slot
-    ld      de,$4000
-    ld      (curraddr),de
+    ld			a,(data_option_z)
+    cp			'>'
+    jr			z,keep_sdp_enabled
+	ld			a,(thisslt)
+	call    	enable_eeprom_slot
+    call    	disable_w_prot
+    call    	restore_ram_slots
+keep_sdp_enabled:
+    call    	openfile
+    cp      	$ff
+    jp      	z, fnotfounderr 
+    call    	setdma
+    ld      	de,$4000
+    ld      	(curraddr),de
+    call    	enable_eeprom_slot
+    call		erase_chip
 writeeeprom:
-    ld      a,'.'
-    call    PUTCHAR
-    call    readfileregister    ; read 1 block of data from disk
-    cp      2
-    jp      nc,filereaderr      ; some error
-    ld      d,a                 ; save error in D for a while
-    ld      a,h
-    or      l
-    jr      z,endofreading      ; number of bytes read is zero, end.
-    push    de                  ; save error code because this might be
+    ld			a,(data_option_z)
+    call    	PUTCHAR
+    call    	readfileregister    ; read 1 block of data from disk
+    cp     	 2
+    jp			nc,filereaderr      ; some error
+    ld      	d,a                 ; save error in D for a while
+    ld      	a,h
+    or      	l
+    jr      		z,endofreading      ; number of bytes read is zero, end.
+    push		de                  ; save error code because this might be
                                 ; the last record of the file. will test 
                                 ; at the end of this loop, below.
     ld      b,l                 ; hl = number of bytes read from disk, but we are
@@ -208,6 +213,14 @@ endofreading:
     call    z,param_p_patch_rom
     ld      hl,txt_advice
     call    print
+    ld		a,5
+safety_wait:
+	push		af
+    call		wait_eeprom
+    pop		af
+    dec	a
+    or		a
+    jr		nz,safety_wait
     ei
     ret
 
@@ -342,50 +355,52 @@ writePage0TestHdr:
     ld      a,'A'
     ld		(hl),a
     inc	hl
-    call	waitforwrite
+    call	wait_eeprom
     ld      a,'T'
     ld		(hl),a
     inc	hl
-    call	waitforwrite
+    call	wait_eeprom
     ld      a,'C'
     ld		(hl),a
-    call	waitforwrite
+    call	wait_eeprom
     call		enable_w_prot
     call		restore_ram_slots		; restore the original RAM slots
     ret 
  
-waitforwrite:
-    push    bc
-    ld      bc,300
-waitforwrite0:
-    push    af
-    push    bc
-    push    de
-    push    hl
-    pop     hl
-    pop     de
-    pop     bc
-    pop     af
-    dec     bc
-    ld      a,b
-    or      c
-    jr      nz,waitforwrite0
-    pop     bc
-    ret
-
 fnotfounderr:
     ld     hl,txt_fnotfound
     call   print
     ret
 
 writebyte:
-    ld      de,(curraddr)
-    ld      (de),a
-    inc     de
-    ld      (curraddr),de           ; Write once to the EEPROM. After this, write is 
-                                    		; disabled on the EEPRPM
+    ld      	de,(curraddr)
+	ld			c,a
+	ld			a,(data_option_z)
+	cp			'.'
+	jr			z,write_userbyte
+    ld      	a, $AA
+    ld      	($9555),a     ; 0x5555 + 0x4000
+    ld      	a, $55
+    ld      	($6AAA),a     ; 0x2AAA + 0x4000
+    ld      	a, $A0
+    ld      	($9555),a     ; 0x5555 + 0x4000
+write_userbyte:
+	ld			a,c
+    ld      	(de),a
+    inc     	de
+    ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
     ret
-
+write_delay:
+	exx
+	exx
+	exx
+	exx
+	exx
+	exx
+	exx
+	exx
+	ret
+	
 openfile:
     ld     c,$0f
     ld     de,fcb
@@ -796,7 +811,7 @@ enable_w_prot:
     ld      ($6AAA),a     ; 0x2AAA + 0x4000
     ld      a, $A0
     ld      ($9555),a     ; 0x5555 + 0x4000
-    call    waitforwrite
+    call    wait_eeprom
     ret
 
 ; Disable write-protection
@@ -813,12 +828,32 @@ disable_w_prot:
     ld      ($6AAA),a 
     ld      a,$20
     ld      ($9555),a
-    call    waitforwrite
+    call    wait_eeprom
+    ret
+
+; Chip Erase
+erase_chip:
+    ld      a, $AA
+    ld      ($9555),a     ; 0x5555 + 0x4000
+    ld      a, $55
+    ld      ($6AAA),a     ; 0x2AAA + 0x4000
+    ld      a, $80
+    ld      ($9555),a     ; 0x5555 + 0x4000
+    ld      a, $AA
+    ld      ($9555),a     ; 0x5555 + 0x4000
+    ld      a, $55
+    ld      ($6AAA),a     ; 0x2AAA + 0x4000
+    ld      a, $10
+    ld      ($9555),a     ; 0x5555 + 0x4000
+    call    wait_eeprom
     ret
 
 wait_eeprom:
-    push    bc
-    ld      bc,300
+    push		bc
+    ld			bc,300
+	call		wait_eeprom0    
+	pop		bc
+	ret
 wait_eeprom0:
     push    af
     push    bc
@@ -832,9 +867,8 @@ wait_eeprom0:
     ld      a,b
     or      c
     jr      nz,wait_eeprom0
-    pop     bc
     ret
-
+        
 param_h:
     xor     a
     ld      (ignorerc),a
@@ -965,7 +999,7 @@ param_i:
 
     ld      a,(data_option_s)
     cp      $ff
-    jr      nz,param_i_show         ; received slot numnber from cli
+    jp      nz,param_i_show         ; received slot numnber from cli
                                     			; Search for the EEPROM for at28show command
 search_cart:
     ld      a,$FF
@@ -979,6 +1013,27 @@ search_cart0:
     call    showcontent
     jr      search_cart0
 
+param_e:
+    xor     a
+    ld      (ignorerc),a
+    ld		a,(data_option_s)
+    cp		$ff
+    ld		hl,txt_param_s_missing
+    jp		z,print
+    ld      hl,txt_erasing
+    call    print
+    call	enable_eeprom_slot
+    call   erase_chip
+    call	restore_ram_slots
+    or      a
+    ret
+
+param_z:
+    ld			a,'>'
+    ld			(data_option_z),a
+    or			a
+    ret
+	
 checkHdr:
 	ld		hl,txt_nextslot
 	call	print
@@ -1015,15 +1070,22 @@ checkHdr_end:
 	ret
 	
 param_i_show:
-	call	enable_eeprom_slot
-    call    showcontent
-    call    PRINTNEWLINE
-	call	restore_ram_slots
+	call		enable_eeprom_slot
+    call		showcontent
+    call		PRINTNEWLINE
+	call		restore_ram_slots
     ret
 
 showcontent:
-    ld      hl,$4000
-    ld      b,12
+    ld			hl,$4000
+    ld			b,6
+    call		showcontent0
+	ld			hl,$4010
+    ld			b,6
+    call		showcontent0
+	call		PRINTNEWLINE
+	ret
+ 	     
 showcontent0:
 	exx
 	call	enable_eeprom_slot
@@ -1036,7 +1098,6 @@ showcontent0:
     pop     bc
     inc     hl
     djnz    showcontent0
-    call    PRINTNEWLINE
     call	restore_ram_slots
     ret
 
@@ -1092,6 +1153,7 @@ parap_p_end: equ $
 
 ROM_NEW_INIT: EQU $400A
 
+txt_erasing: db "Erasing the EEPROM...",0
 txt_slot: db "Slot ",0
 txt_nextslot: db "Checking slot ",0
 txt_ramsearch: db "Searching for EEPROM",13,10,0
@@ -1113,7 +1175,7 @@ txt_exit: db "Returning to MSX-DOS",13,10,0
 txt_needfname: db "File name not specified",13,10,0
 txt_unprotecting: db "Disabling AT28C256 Software Data Protection on slot:",0
 txt_protecting: db "Enabling AT28C256 Software Data Protection on slot:",0
-txt_param_s_missing: db 13,10,"Error - missing parameter /s <slot> ",13,10,0
+txt_param_s_missing: db 13,10,"Error - parameter /s <slot> must come first or it is missing",13,10,0
 txt_param_dx_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /dx",13,10,0
 txt_param_ex_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /ex",13,10,0
 txt_patching_rom: DB 13,10,"Patching ROM. Use ESC to bypass ROM boot",13,10,0
@@ -1133,6 +1195,7 @@ db "/h Show this help",13,10
 db "/s <slot number>",13,10
 db "/i Show initial 24 bytes of the slot cartridge",13,10
 db "/p Patch rom to skip boot when pressing ESC (Dangerous)",13,10
+db "/e Erase the EEPROM",13,10
 db "/f File name with extension, for example game.rom",13,10,0
 
 parms_table:    
@@ -1148,6 +1211,11 @@ parms_table:
     dw param_p
     db "f",0
     dw param_f
+	db "e",0
+    dw param_e
+  	db "z",0
+    dw param_z
+
     db 0                ; end of table. this byte is mandatory to be zero
 
 thisslt:        db $00
@@ -1157,6 +1225,8 @@ ignorerc:       db $ff
 data_option_s:  db $ff
 data_option_f:  db $ff,0,0,0,0,0,0,0,0,0,0,0,0
 data_option_p:  db $ff
+data_option_e:  db $ff
+data_option_z: db '.'
 parm_address:   dw 0000
 curraddr:       dw 0000
 eeprom_saved_bytes:  db 0,0,0

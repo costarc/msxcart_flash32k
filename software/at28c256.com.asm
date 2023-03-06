@@ -53,9 +53,8 @@
 ; disconnectd.
 ; ====================================================================================
 
-dma:            equ     $80
 regsize:        equ     1
-numregtoread:   equ     64
+numregtoread:   equ     512
 TEXTTERMINATOR: EQU     0
 BDOS:           EQU     5
 CALLSTAT:       EQU     $55A8
@@ -376,7 +375,7 @@ writePage0TestHdr:
 writeBlockToEprom:
     ld		hl,dma
     ld		de,(curraddr)
-  	ld		b,numregtoread
+  	ld		bc,numregtoread
 	push		bc
 	push		de
 	push		hl
@@ -391,8 +390,11 @@ writeBlockLoop:
     ld		(de),a
     inc	hl
     inc	de
-    call	wait_eeprom
-    djnz	writeBlockLoop
+    call	wait_eeprom2
+    dec	bc
+    ld		a,b
+    or		c
+    jr		nz,writeBlockLoop
     push		de
     call		enable_w_prot
     call		restore_ram_slots		; restore the original RAM slots
@@ -944,6 +946,12 @@ wait_eeprom:
 	call		wait_eeprom0    
 	pop		bc
 	ret
+wait_eeprom2:
+    push		bc
+    ld			bc,1
+	call		wait_eeprom0    
+	pop		bc
+	ret
 wait_eeprom0:
     push    af
     push    bc
@@ -1399,3 +1407,6 @@ db 0,0                  ; Relative location from top cluster of the file number 
 fcb_cr: db 0            ; Current record within extent (0...127)
 fcb_rn: db 0,0,0,0      ; Random record number. If record size <64 then all 4 bytes will be used.
 db 0,0,0
+ds		10
+;dma:            equ     $80
+dma:            equ     $

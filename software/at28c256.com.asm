@@ -390,6 +390,7 @@ wr_blk_fast:
 	push		bc
 	ld			bc,64
 	LDIR
+	call		wait_eeprom2
 	pop		bc
 	djnz		wr_blk_fast
 	ld			(curraddr),de

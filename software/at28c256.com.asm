@@ -2,7 +2,7 @@
 ;|                                                                           |
 ;| MSX Software for Cartridge AT28C256 32K EEPROM                            |
 ;|                                                                           |
-;| Version : 1.3                                                           |
+;| Version : 1.4                                                           |
 ;|                                                                           |
 ;| Copyright (c) 2020 Ronivon Candido Costa (ronivon@outlook.com)            |
 ;|                                                                           |
@@ -35,10 +35,11 @@
 ; File history :
 ; 1.0  - 27/06/2020 : initial version
 ;        05/08/2020 : Revised version
-; 1.1  - 24/08/2020 : Improved parsing of filename
-; 1.2. - 26/02/2023 : Changed how slots are detected and added support to display extended slots
+; 1.1 - 24/08/2020 : Improved parsing of filename
+; 1.2 - 26/02/2023 : Changed how slots are detected and added support to display extended slots
 ;      - Changed way how EEPROM is detected and fixed bug that was writting to MSX RAM in some models
-;
+;1.3 - Changes to the write logic to address some issues with some eeproms
+; 1.4 - Added option /r via command line to write very slowly to the eeprom 
 ; Note on this code:
 ; This version does not identify the AT28C256 automatically.
 ; Before running the EEPROM must have the Software Data Protection disabled,
@@ -186,14 +187,15 @@ write_set:
 	ld		a,(data_option_r)
 	or		a
 	jr		z,writeeeprom0
-	call	writeBlockToEprom
+	call	ByteModeSlow
 	jr		writeeeprom1	
 writeeeprom0:
-    ld      hl,dma             ; Area where the record was written
-    ld		de,(curraddr)	;eeprom address to write
-	ldir
-    ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPROM
-    ei
+	call	BlockModeFast
+    ;ld      hl,dma             ; Area where the record was written
+    ;ld		de,(curraddr)	;eeprom address to write
+	;ldir
+    ;ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPROM
+    ;ei
 writeeeprom1:
     pop     af                      ; retrieve the error code
     cp      1                       ; 1 = this was last record. 
@@ -377,7 +379,28 @@ writePage0TestHdr:
     call		restore_ram_slots		; restore the original RAM slots
     ret 
 
-writeBlockToEprom:
+BlockModeFast:
+	ld		a,(thisslt)
+	call	enable_eeprom_slot	; enable the eeprom slot (from command line)
+	call	disable_w_prot
+    ld		hl,dma
+    ld		de,(curraddr)
+  	ld		b,8								; will write 64 bytes every time (8 * 64 = 512)
+wr_blk_fast:
+	push		bc
+	ld			bc,64
+	LDIR
+	pop		bc
+	djnz		wr_blk_fast
+	ld			(curraddr),de
+    call		enable_w_prot
+    call		restore_ram_slots		; restore the original RAM slots
+    ret 
+
+; Very slow write mode
+; Write one byte at a time, with delays between each write operation
+; Also re-enable / disable slots on every block
+ByteModeSlow:
     ld		hl,dma
     ld		de,(curraddr)
   	ld		bc,numregtoread
@@ -391,7 +414,7 @@ writeBlockToEprom:
 	pop		hl
 	pop		de
 	pop		bc
-writeBlockLoop:
+wr_blk_slow:
     ld      a,(hl)
     ld		(de),a
     inc	hl
@@ -400,7 +423,7 @@ writeBlockLoop:
     dec	bc
     ld		a,b
     or		c
-    jr		nz,writeBlockLoop
+    jr		nz,wr_blk_slow
     push		de
     call		enable_w_prot
     call		restore_ram_slots		; restore the original RAM slots

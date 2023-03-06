@@ -180,13 +180,18 @@ writeeeprom:
                                 ; at the end of this loop, below.
     ;ld      b,0                 ; hl = number of bytes read from disk, but we are
     ;ld		c,l
+    ld		bc,numregtoread
 write_set:
 	di
-    ;ld      hl,dma             ; Area where the record was written
-    ;ld		de,(curraddr)	;eeprom address to write
-	;ldir
+	ld		a,(data_option_r)
+	or		a
+	jr		z,writeeeprom0
 	call	writeBlockToEprom
-	
+	jr		writeeeprom1	
+writeeeprom0:
+    ld      hl,dma             ; Area where the record was written
+    ld		de,(curraddr)	;eeprom address to write
+	ldir
     ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPROM
     ei
 writeeeprom1:
@@ -381,6 +386,7 @@ writeBlockToEprom:
 	push		hl
 	ld			a,(thisslt)
 	call	enable_eeprom_slot	; enable the eeprom slot (from command line)
+	di
 	call	disable_w_prot
 	pop		hl
 	pop		de
@@ -399,51 +405,13 @@ writeBlockLoop:
     call		enable_w_prot
     call		restore_ram_slots		; restore the original RAM slots
     pop		de
+    ld			(curraddr),de
     ret 
      
 fnotfounderr:
     ld     hl,txt_fnotfound
     call   print
     ret
-
-writebyte:
-    ld      	de,(curraddr)
-	ld			c,a
-	ld			a,(data_option_z)
-	cp			'.'
-	jr			z,write_userbyte
-    ld      	a, $AA
-    ld      	($9555),a     ; 0x5555 + 0x4000
-    ld      	a, $55
-    ld      	($6AAA),a     ; 0x2AAA + 0x4000
-    ld      	a, $A0
-    ld      	($9555),a     ; 0x5555 + 0x4000
-write_userbyte:
-	ld			a,c
-    ld      	(de),a
-    inc     	de
-    ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPROM
-    call		write_delay
-    ret
-write_delay:
-	ld		a,(writefailed)
-	or		a
-	ret	z
-	ld		a,(retries)
-	ld		b
-delay_in_failure:
-	call	write_delay1
-	djnz	delay_in_failure
-write_delay1:
-	exx
-	exx
-	exx
-	exx
-	exx
-	exx
-	exx
-	exx
-	ret
 
 verifywrite:
 	push		bc
@@ -948,7 +916,7 @@ wait_eeprom:
 	ret
 wait_eeprom2:
     push		bc
-    ld			bc,1
+    ld			bc,300
 	call		wait_eeprom0    
 	pop		bc
 	ret
@@ -1133,39 +1101,8 @@ param_z:
     ret
 
 param_r:
-    ld      hl,(parm_address)
-    call    space_skip
-    ld      (parm_address),hl
-    ret     c
-    ld      a,(hl)
-    cp      '0'
-    ret     c
-    sub     '0'
-    ld      b,a
-    inc     hl
-    ld      (parm_address),hl
-    ld      a,(hl)
-    or      a
-    jr      z,param_r_end
-    cp      ' '
-    jr      z,param_r_end
-    cp      '0'
-    jr      c,param_r_end
-    ld      a,(hl)
-    inc     hl
-    ld      (parm_address),hl
-    sub     '0'
-    ld      c,a
-    ld      a,b
-    sla     a
-    sla     a
-    sla     a
-    sla     a
-    or      c
-    ld      b,a
-param_r_end:
-    ld      a,b
-    ld      (retries),a
+	ld		a,1
+	ld		(data_option_r),a
     ret
 	
 checkHdr:
@@ -1330,10 +1267,9 @@ txt_invparms: db "Invalid parameters",13,10
 txt_help: db "Command line options: at28c256 </h | /i> | </s <slot> </f> file.rom>",13,10,13,10
 db "/h Show this help",13,10
 db "/s <slot number>",13,10
-db "/r number of retries to write",13,10
 db "/i Show initial 24 bytes of the slot cartridge",13,10
-db "/p Patch rom to skip boot when pressing ESC (Dangerous)",13,10
 db "/e Erase the EEPROM",13,10
+db "/r reset / slow write to recover eeprom from internal unstable state",13,10
 db "/f File name with extension, for example game.rom",13,10,0
 
 parms_table:    
@@ -1351,8 +1287,6 @@ parms_table:
     dw param_f
 	db "e",0
     dw param_e
-  	db "z",0
-    dw param_z
   	db "r",0
     dw param_r
 
@@ -1367,6 +1301,7 @@ data_option_f:  db $ff,0,0,0,0,0,0,0,0,0,0,0,0
 data_option_p:  db $ff
 data_option_e:  db $ff
 data_option_z: db '.'
+data_option_r: db 0
 parm_address:   dw 0000
 curraddr:       dw 0000
 eeprom_saved_bytes:  db 0,0,0

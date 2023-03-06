@@ -38,7 +38,7 @@
 ; 1.1 - 24/08/2020 : Improved parsing of filename
 ; 1.2 - 26/02/2023 : Changed how slots are detected and added support to display extended slots
 ;      - Changed way how EEPROM is detected and fixed bug that was writting to MSX RAM in some models
-;1.3 - Changes to the write logic to address some issues with some eeproms
+; 1.3 - Changes to the write logic to address some issues with some eeproms
 ; 1.4 - Added option /r via command line to write very slowly to the eeprom 
 ; Note on this code:
 ; This version does not identify the AT28C256 automatically.
@@ -1274,7 +1274,7 @@ txt_param_s_missing: db 13,10,"Error - parameter /s <slot> must come first or it
 txt_param_dx_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /dx",13,10,0
 txt_param_ex_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /ex",13,10,0
 txt_patching_rom: DB 13,10,"Patching ROM. Use ESC to bypass ROM boot",13,10,0
-txt_credits: db "AT28C256 EEPROM Programmer for MSX v1.3",13,10
+txt_credits: db "AT28C256 EEPROM Programmer for MSX v1.4",13,10
 db "(c) Ronivon Costa, 2020-2023",13,10,13,10,0
 txt_advice: db 13,10
 db "Write process completed",13,10,0

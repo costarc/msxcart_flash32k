@@ -163,9 +163,9 @@ write:
     ld      	de,$4000
     ld      	(curraddr),de
 	ld			a,(thisslt)
-	call    	enable_eeprom_slot
+	;call    	enable_eeprom_slot
     call		erase_chip
-    call    	disable_w_prot
+    ;call    	disable_w_prot
 writeeeprom:
     ld			a,(data_option_z)
     call    	PUTCHAR
@@ -179,13 +179,15 @@ writeeeprom:
     push		de                  ; save error code because this might be
                                 ; the last record of the file. will test 
                                 ; at the end of this loop, below.
-    ld      b,0                 ; hl = number of bytes read from disk, but we are
-    ld		c,l
+    ;ld      b,0                 ; hl = number of bytes read from disk, but we are
+    ;ld		c,l
 write_set:
 	di
-    ld      hl,dma             ; Area where the record was written
-    ld		de,(curraddr)	;eeprom address to write
-	ldir
+    ;ld      hl,dma             ; Area where the record was written
+    ;ld		de,(curraddr)	;eeprom address to write
+	;ldir
+	call	writeBlockToEprom
+	
     ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPROM
     ei
 writeeeprom1:
@@ -370,7 +372,33 @@ writePage0TestHdr:
     call		enable_w_prot
     call		restore_ram_slots		; restore the original RAM slots
     ret 
- 
+
+writeBlockToEprom:
+    ld		hl,dma
+    ld		de,(curraddr)
+  	ld		b,numregtoread
+	push		bc
+	push		de
+	push		hl
+	ld			a,(thisslt)
+	call	enable_eeprom_slot	; enable the eeprom slot (from command line)
+	call	disable_w_prot
+	pop		hl
+	pop		de
+	pop		bc
+writeBlockLoop:
+    ld      a,(hl)
+    ld		(de),a
+    inc	hl
+    inc	de
+    call	wait_eeprom
+    djnz	writeBlockLoop
+    push		de
+    call		enable_w_prot
+    call		restore_ram_slots		; restore the original RAM slots
+    pop		de
+    ret 
+     
 fnotfounderr:
     ld     hl,txt_fnotfound
     call   print
@@ -475,7 +503,7 @@ filereaderr:
     ret
 
 readfileregister:
-    ld     hl,numregtoread          ; read 128 bytes at a time (register is set to size 1 in fcb)
+    ld     hl,numregtoread          ; read 64 bytes at a time (register is set to size 1 in fcb)
     ld     c,$27
     ld     de,fcb
     call   BDOS

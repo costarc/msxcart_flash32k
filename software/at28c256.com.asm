@@ -2,7 +2,7 @@
 ;|                                                                           |
 ;| MSX Software for Cartridge AT28C256 32K EEPROM                            |
 ;|                                                                           |
-;| Version : 1.2                                                            |
+;| Version : 1.3                                                           |
 ;|                                                                           |
 ;| Copyright (c) 2020 Ronivon Candido Costa (ronivon@outlook.com)            |
 ;|                                                                           |

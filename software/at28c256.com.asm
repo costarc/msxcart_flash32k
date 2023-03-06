@@ -156,22 +156,16 @@ write:
 
                                 ; read filename passed with DOS command line
                                 ; and update fcb with filename
-    ld			a,(data_option_z)
-    cp			'>'
-    jr			z,keep_sdp_enabled
-	ld			a,(thisslt)
-	call    	enable_eeprom_slot
-    call    	disable_w_prot
-    call    	restore_ram_slots
-keep_sdp_enabled:
     call    	openfile
     cp      	$ff
     jp      	z, fnotfounderr 
     call    	setdma
     ld      	de,$4000
     ld      	(curraddr),de
-    call    	enable_eeprom_slot
+	ld			a,(thisslt)
+	call    	enable_eeprom_slot
     call		erase_chip
+    call    	disable_w_prot
 writeeeprom:
     ld			a,(data_option_z)
     call    	PUTCHAR
@@ -185,32 +179,26 @@ writeeeprom:
     push		de                  ; save error code because this might be
                                 ; the last record of the file. will test 
                                 ; at the end of this loop, below.
-    ld      b,l                 ; hl = number of bytes read from disk, but we are
-                                ; reading only 64 bytes at a time
-                                ; therefore fits in register b
-    ld      hl,dma              ; Area where the record was written
-    di
-
-writeeeprom0:
-    ld      a,(hl)
-    push    bc
-    push    hl
-    call    writebyte
-    pop     hl
-    pop     bc
-    inc     hl
-    djnz    writeeeprom0
+    ld      b,0                 ; hl = number of bytes read from disk, but we are
+    ld		c,l
+write_set:
+	di
+    ld      hl,dma             ; Area where the record was written
+    ld		de,(curraddr)	;eeprom address to write
+	ldir
+    ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPROM
+    ei
+writeeeprom1:
     pop     af                      ; retrieve the error code
-    cp      1                       ; 1 = this was last record.
-    jr      z,endofreading   
-    jr      writeeeprom
-
+    cp      1                       ; 1 = this was last record. 
+    jr      	  nz,writeeeprom
 endofreading:
+	di
     call    enable_w_prot
     call    restore_ram_slots
     ld      a,(data_option_p)
     cp      1
-    call    z,param_p_patch_rom
+    ;call    z,param_p_patch_rom
     ld      hl,txt_advice
     call    print
     ld		a,5
@@ -223,7 +211,23 @@ safety_wait:
     jr		nz,safety_wait
     ei
     ret
-
+    
+writeretry:
+	ld		a,(retries)
+	dec	a
+	or		a
+	jr		z,wexitfail
+	ld		(retries),a
+	ld		(curraddr),de
+	jr		write_set
+wexitfail:
+	pop	af								; discard file read error code
+    call    enable_w_prot
+    call    restore_ram_slots
+	ld		hl,txt_writefailed
+	call	print
+	ret
+	
 notEprom:
 	ld		hl,txt_ramfoundnoteeprom
 	cp		1
@@ -388,9 +392,19 @@ write_userbyte:
 	ld			a,c
     ld      	(de),a
     inc     	de
-    ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPRPM
+    ld      	(curraddr),de           ; Write once to the EEPROM. After this, write is disabled on the EEPROM
+    call		write_delay
     ret
 write_delay:
+	ld		a,(writefailed)
+	or		a
+	ret	z
+	ld		a,(retries)
+	ld		b
+delay_in_failure:
+	call	write_delay1
+	djnz	delay_in_failure
+write_delay1:
 	exx
 	exx
 	exx
@@ -400,7 +414,55 @@ write_delay:
 	exx
 	exx
 	ret
-	
+
+verifywrite:
+	push		bc
+	push		de
+	jr		verifywrite_set
+	; forceing an error to test verification code
+	ld		a,(retries)
+	cp		3
+	jr		z,inserterror
+	cp     0
+	jr		z,removeerror
+	jr		verifywrite_set
+inserterror:
+	ld		ix,dma
+	ld		a,(ix+62)
+	ld		(workarea),a
+	ld		a,$FF
+	ld		(ix+62),a
+	jr		verifywrite_set
+removeerror:
+	ld		ix,dma
+	ld		a,(workarea)
+	ld		(ix+62),a
+verifywrite_set:
+	ld		c,b
+	ld		b,0			; only 64 bytes, but the data is in b
+verifywrite0:
+	ld		a,(de)
+	cpi								; compare with A, inc hl, dec bc
+	jr		nz,verifywrite1
+	inc	de
+	ld		a,b
+	or		c
+	jr		nz,verifywrite0
+	ld		a,'='
+	call		PUTCHAR
+	or		a							; eeprom data matches with buffer
+	pop	de
+	pop	bc
+	ret
+verifywrite1:
+	ld		a,'!'
+	ld		(writefailed),a
+	call	PUTCHAR
+	pop	de
+	pop	bc
+	scf							; flag the error
+	ret
+		
 openfile:
     ld     c,$0f
     ld     de,fcb
@@ -1033,6 +1095,42 @@ param_z:
     ld			(data_option_z),a
     or			a
     ret
+
+param_r:
+    ld      hl,(parm_address)
+    call    space_skip
+    ld      (parm_address),hl
+    ret     c
+    ld      a,(hl)
+    cp      '0'
+    ret     c
+    sub     '0'
+    ld      b,a
+    inc     hl
+    ld      (parm_address),hl
+    ld      a,(hl)
+    or      a
+    jr      z,param_r_end
+    cp      ' '
+    jr      z,param_r_end
+    cp      '0'
+    jr      c,param_r_end
+    ld      a,(hl)
+    inc     hl
+    ld      (parm_address),hl
+    sub     '0'
+    ld      c,a
+    ld      a,b
+    sla     a
+    sla     a
+    sla     a
+    sla     a
+    or      c
+    ld      b,a
+param_r_end:
+    ld      a,b
+    ld      (retries),a
+    ret
 	
 checkHdr:
 	ld		hl,txt_nextslot
@@ -1179,10 +1277,13 @@ txt_param_s_missing: db 13,10,"Error - parameter /s <slot> must come first or it
 txt_param_dx_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /dx",13,10,0
 txt_param_ex_err1: db 13,10,"Error - missing parameter /s <slot> before parameter /ex",13,10,0
 txt_patching_rom: DB 13,10,"Patching ROM. Use ESC to bypass ROM boot",13,10,0
-txt_credits: db "AT28C256 EEPROM Programmer for MSX v1.2",13,10
+txt_credits: db "AT28C256 EEPROM Programmer for MSX v1.3",13,10
 db "(c) Ronivon Costa, 2020-2023",13,10,13,10,0
 txt_advice: db 13,10
 db "Write process completed",13,10,0
+txt_writefailed: db 13,10,"Writing process failed!",13,10
+		db  "Check if eeprom legs are clean,",13,10
+		db "and well seated in the socket (if socketed).",13,10,0
 
 txt_sdp:    db "To force disabling the AT28C256 Software Data Protction (SDP),",13,10
 db "call this program passing the slot as parameter.",13,10
@@ -1193,6 +1294,7 @@ txt_invparms: db "Invalid parameters",13,10
 txt_help: db "Command line options: at28c256 </h | /i> | </s <slot> </f> file.rom>",13,10,13,10
 db "/h Show this help",13,10
 db "/s <slot number>",13,10
+db "/r number of retries to write",13,10
 db "/i Show initial 24 bytes of the slot cartridge",13,10
 db "/p Patch rom to skip boot when pressing ESC (Dangerous)",13,10
 db "/e Erase the EEPROM",13,10
@@ -1215,6 +1317,8 @@ parms_table:
     dw param_e
   	db "z",0
     dw param_z
+  	db "r",0
+    dw param_r
 
     db 0                ; end of table. this byte is mandatory to be zero
 
@@ -1232,6 +1336,8 @@ curraddr:       dw 0000
 eeprom_saved_bytes:  db 0,0,0
 expandedslt:	db $FF
 workarea:		db	0,0,0,0
+retries:	db	3
+writefailed: db 0
 
 fcb:
                         ; reference: https://www.msx.org/wiki/FCB    

@@ -1288,11 +1288,11 @@ txt_help:		db "Command line options: at28c256 </h | /i | /e> | </s <slot> </r> <
 			db "/i Show initial 24 bytes of the slot cartridge",13,10
 			db "/e Erase the EEPROM",13,10
 			db "/s <slot number>",13,10
-			db "/r slow write to work around unstable eeproms",13,10
+			db "/r Slow write to work around unstable eeproms",13,10
 			db "/f File name with extension, for example game.rom",13,10,0
 txt_credits:		db 13,10,"AT28C256 EEPROM Programmer for MSX",13,10
 			db "v1.4."
-BuildId: db "20230307.036"
+BuildId: db "20230307.037"
 			db 13,10
 			db "RCC (c) 2020-2023",13,10,13,10,0
 

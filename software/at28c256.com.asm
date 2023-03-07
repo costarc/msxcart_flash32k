@@ -1296,8 +1296,8 @@ txt_help:		db "Command line options: at28c256 </h | /i> | </s <slot> </f> file.r
 			db "/r reset / slow write to recover eeprom from internal unstable state",13,10
 			db "/f File name with extension, for example game.rom",13,10,0
 txt_credits:		db "AT28C256 EEPROM Programmer for MSX",13,10
-			db "v1.4 b"
-BuildId: db "20230307.032"
+			db "v1.4."
+BuildId: db "20230307.033"
 			db 13,10
 			db "(c) Ronivon Costa, 2020-2023",13,10,13,10,0
 

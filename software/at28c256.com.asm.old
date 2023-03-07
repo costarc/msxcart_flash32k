@@ -1371,5 +1371,5 @@ db 0,0				; Relative location from top cluster of the file number of clusters
 fcb_cr: db 0			; Current record within extent (0...127)
 fcb_rn:	db 0,0,0,0		; Random record number. If record size <64 then all 4 bytes will be used.
 db	0,0,0
-ds		10
+ds	10
 dma:  	equ     $

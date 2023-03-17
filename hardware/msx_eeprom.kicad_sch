@@ -6,8 +6,8 @@
 
   (title_block
     (title "MSX AT28C256 EEPROM Programable Cartridge")
-    (date "2023-02-28")
-    (rev "7")
+    (date "2023-03-17")
+    (rev "8")
     (company "RCC")
   )
 
@@ -1522,7 +1522,7 @@
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "MSX_CONNECTOR" (id 1) (at 50.8 21.0058 0))
-    (property "Footprint" "Roni Footprints:MSX_CART_SW_Official" (id 2) (at 50.8 54.61 0)
+    (property "Footprint" "Roni Footprints:MSX_CART_SW_Official_3Holes" (id 2) (at 50.8 54.61 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (id 3) (at 50.8 54.61 0)
@@ -1818,7 +1818,7 @@
       (reference "J1") (unit 1) (value "Conn_02x07_Odd_Even") (footprint "Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Horizontal")
     )
     (path "/00000000-0000-0000-0000-00005edd120e"
-      (reference "P1") (unit 1) (value "MSX_CONNECTOR") (footprint "Roni Footprints:MSX_CART_SW_Official")
+      (reference "P1") (unit 1) (value "MSX_CONNECTOR") (footprint "Roni Footprints:MSX_CART_SW_Official_3Holes")
     )
     (path "/00000000-0000-0000-0000-00005f2edbce"
       (reference "R1") (unit 1) (value "10K") (footprint "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal")

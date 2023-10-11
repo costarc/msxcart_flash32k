@@ -1,0 +1,45 @@
+﻿MSX flash_cart PCB Rev 07
+=========================
+
+https://github.com/costarc/msxcart_flash32k/
+
+
+Jumpers:
+---- SLTSL
+---- A14
+---- A15
+
+
+To write the EEPROM
+
+
+Download the programmer AT28C256.COM from github repository and save it to your MSX disk.
+https://github.com/costarc/msxcart_flash32k/tree/master/software
+
+
+To write the EEPROM follow these steps:
+
+1. Open /SLTSL (remove jumper)
+3. Boot the MSX with the EEPROM cart inserted in the MSX slot
+4. Close /SLTSL and A15 (put the jumpers back on)
+
+The MSX slots available to connect cartridges are usually 1 or 2.
+
+AT28C256.COM /i can display your slots, and the initial header in each ROM segment. It might be useful in identifying where the eprom is connected in case you do not know.
+
+
+Write the ROM to the EEPROM by passing the correct slot number in the "/s" parameter, for example: 
+
+at28c256 /s 1 /f roadfighter.rom
+
+The progress is shown in the screen, and it should take only a few seconds to complete.
+
+To boot from the EEPROM, just reboot the MSX. If you burned 2 ROMs, you can switch between them by moving the jumper between A15 and A14.
+
+You can merge two ROMS to make a single ROM to write to the EEPROM. In a Linux or Mac OS system, this command will do the trick:
+
+cat game1.rom >  big.rom
+cat game2.rom >> big.rom
+
+For a Windows/DOS system, you should use something like this:
+copy /b game1.rom+game2.rom big.rom

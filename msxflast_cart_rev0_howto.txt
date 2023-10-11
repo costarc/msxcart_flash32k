@@ -30,7 +30,7 @@ Follow this process:
 4. Put on the jumper CS12
 
 Now you ready to write the ROM. 
-Try to identify the slot where the cartridge is connected passig parameter "/i" to AT28C256.COM.
+Try to identify the slot where the cartridge is connected passing parameter "/i" to AT28C256.COM.
 Slots with high numbers, such as 82,83, etc are probably form your MSX extended ROMs - you cannot use these values with AT28C256.COM.
 
 Write the ROM passing the correct slot number in the "/s" parameter, for example: at28c256 /s 1 /f roadfighter.rom)
